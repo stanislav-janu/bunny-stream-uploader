@@ -4,11 +4,13 @@ A native macOS app for uploading large video files to [Bunny Stream](https://bun
 
 On a test link a single 9 GB file went from ~56 minutes (single stream) to ~5 minutes (64 parallel threads), roughly 11x faster.
 
+![Bunny Stream Uploader](docs/screenshot.png)
+
 ## Features
 
 - **Parallel single-file upload.** One file is split into N parts, each uploaded over its own TCP connection, then merged on Bunny via `Upload-Concat: final`.
 - **Automatic thread count** based on file size (configurable).
-- **Drag and drop**, plus a Finder **Quick Action / "Open with"** for `.mp4` and `.mov`.
+- **Drag and drop**, plus a Finder **Quick Action / "Open with"** for common video formats (mp4, m4v, mov, mkv, webm, avi, flv, wmv, ts, mpeg).
 - **Resumable single-stream** fallback for small files (via TUSKit).
 - **Live throughput** and per-upload progress, with cancel.
 - **Credentials stored in the macOS Keychain**, never shown or logged.

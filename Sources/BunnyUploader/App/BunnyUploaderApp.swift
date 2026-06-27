@@ -47,9 +47,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         buffered.removeAll()
     }
 
+    /// Video container extensions Bunny Stream accepts for ingestion.
+    static let acceptedExtensions: Set<String> = [
+        "mp4", "m4v", "mov", "mkv", "webm", "avi", "flv", "wmv", "ts", "mpeg", "mpg",
+    ]
+
     private static func isAcceptedVideo(_ url: URL) -> Bool {
-        let ext = url.pathExtension.lowercased()
-        return ext == "mp4" || ext == "mov" || ext == "m4v"
+        return acceptedExtensions.contains(url.pathExtension.lowercased())
     }
 }
 

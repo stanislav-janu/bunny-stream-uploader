@@ -65,8 +65,10 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
             <key>LSHandlerRank</key><string>Alternate</string>
             <key>LSItemContentTypes</key>
             <array>
+                <string>public.movie</string>
                 <string>public.mpeg-4</string>
                 <string>com.apple.quicktime-movie</string>
+                <string>public.avi</string>
             </array>
         </dict>
     </array>
