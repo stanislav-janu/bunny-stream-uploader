@@ -2,11 +2,16 @@ import Foundation
 import Security
 
 /// Bunny Stream credentials held securely in the login keychain.
-struct Credentials: Equatable {
-    var apiKey: String
-    var libraryId: String
+public struct Credentials: Equatable {
+    public var apiKey: String
+    public var libraryId: String
 
-    var isComplete: Bool {
+    public init(apiKey: String, libraryId: String) {
+        self.apiKey = apiKey
+        self.libraryId = libraryId
+    }
+
+    public var isComplete: Bool {
         return !apiKey.isEmpty && !libraryId.isEmpty
     }
 }

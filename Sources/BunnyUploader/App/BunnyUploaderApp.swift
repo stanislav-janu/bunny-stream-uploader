@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import BunnyUploaderCore
 
 /// Receives files from Finder two ways and adds them to the upload queue:
 /// 1. Open with → BunnyUploader (`application(_:open:)`)
@@ -74,6 +75,20 @@ struct BunnyUploaderApp: App {
                         }
                     }
                     appDelegate.flushPending()
+                    // Wire UI side-effects the Core engine intentionally does not depend on.
+                    engine.onUploadFinished = { item in
+                        Notifications.uploadFinished(fileName: item.fileName)
+                    }
+                    engine.onUploadFailed = { item, message in
+                        Notifications.uploadFailed(fileName: item.fileName, message: message)
+                    }
+                }
+                .onChange(of: engine.aggregateProgress) { _, progress in
+                    if engine.activeCount > 0 {
+                        DockProgress.show(progress: progress)
+                    } else {
+                        DockProgress.clear()
+                    }
                 }
         }
         .windowResizability(.contentMinSize)

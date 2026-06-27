@@ -1,4 +1,5 @@
 import SwiftUI
+import BunnyUploaderCore
 
 struct UploadRowView: View {
     @ObservedObject var item: UploadItem

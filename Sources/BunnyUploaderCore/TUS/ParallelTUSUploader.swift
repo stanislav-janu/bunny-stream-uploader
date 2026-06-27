@@ -8,13 +8,13 @@ import Foundation
 /// Deliberately NOT an actor: parts run in parallel and disk reads go through `pread`
 /// on a dedicated concurrent queue, so no thread blocks the others or the
 /// cooperative async pool. Shared state is protected by a lock.
-final class ParallelTUSUploader: @unchecked Sendable {
-    struct Result {
-        let bytesUploaded: Int64
-        let elapsed: TimeInterval
+public final class ParallelTUSUploader: @unchecked Sendable {
+    public struct Result {
+        public let bytesUploaded: Int64
+        public let elapsed: TimeInterval
     }
 
-    enum UploadError: LocalizedError {
+    public enum UploadError: LocalizedError, Equatable {
         case open(String)
         case read(Int)
         case partialCreateFailed(Int, String)
@@ -23,7 +23,7 @@ final class ParallelTUSUploader: @unchecked Sendable {
         case missingLocation
         case cancelled
 
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .open(let path): return String(localized: "Could not open file: \(path)")
             case .read(let code): return String(localized: "File read error (errno \(code))")
@@ -49,6 +49,22 @@ final class ParallelTUSUploader: @unchecked Sendable {
     private let lock = NSLock()
     private var _totalBytesUploaded: Int64 = 0
     private var _cancelled = false
+
+    /// Base config for each part's session. One TCP connection per host by default;
+    /// tests inject a config with a mock URLProtocol.
+    private let sessionConfiguration: URLSessionConfiguration
+
+    public init(sessionConfiguration: URLSessionConfiguration? = nil) {
+        if let sessionConfiguration {
+            self.sessionConfiguration = sessionConfiguration
+        } else {
+            let config = URLSessionConfiguration.ephemeral
+            config.httpMaximumConnectionsPerHost = 1
+            config.timeoutIntervalForRequest = 600
+            config.timeoutIntervalForResource = 24 * 60 * 60
+            self.sessionConfiguration = config
+        }
+    }
 
     /// Diagnostic logging to a file (no sensitive data).
     /// ~/Library/Application Support/BunnyUploader/debug.log
@@ -83,7 +99,7 @@ final class ParallelTUSUploader: @unchecked Sendable {
     }
 
     /// Starts the parallel upload. `onProgress` receives the total bytes uploaded.
-    func upload(
+    public func upload(
         fileURL: URL,
         fileSize: Int64,
         partCount: Int,
@@ -143,7 +159,7 @@ final class ParallelTUSUploader: @unchecked Sendable {
         return Result(bytesUploaded: total, elapsed: Date().timeIntervalSince(start))
     }
 
-    func cancel() {
+    public func cancel() {
         lock.lock()
         _cancelled = true
         lock.unlock()
@@ -161,10 +177,7 @@ final class ParallelTUSUploader: @unchecked Sendable {
         onProgress: @escaping @Sendable (Int64) -> Void
     ) async throws -> URL {
         // Own session = own TCP connection (independent congestion window).
-        let config = URLSessionConfiguration.ephemeral
-        config.httpMaximumConnectionsPerHost = 1
-        config.timeoutIntervalForRequest = 600
-        config.timeoutIntervalForResource = 24 * 60 * 60
+        let config = sessionConfiguration.copy() as! URLSessionConfiguration
         let session = URLSession(configuration: config)
         defer { session.finishTasksAndInvalidate() }
 
@@ -246,8 +259,7 @@ final class ParallelTUSUploader: @unchecked Sendable {
         authHeaders: [String: String],
         metadataHeader: String?
     ) async throws {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 120
+        let config = sessionConfiguration.copy() as! URLSessionConfiguration
         let session = URLSession(configuration: config)
         defer { session.finishTasksAndInvalidate() }
 
@@ -313,21 +325,22 @@ final class ParallelTUSUploader: @unchecked Sendable {
 
     // MARK: - Helpers
 
-    static func splitIntoParts(fileSize: Int64, partCount: Int) -> [(offset: Int64, length: Int64)] {
-        let n = max(1, partCount)
+    public static func splitIntoParts(fileSize: Int64, partCount: Int) -> [(offset: Int64, length: Int64)] {
+        guard fileSize > 0 else { return [] }
+        // Never make more parts than there are bytes (keeps every part non-empty).
+        let n = max(1, min(partCount, Int(fileSize)))
         let base = fileSize / Int64(n)
-        var parts: [(Int64, Int64)] = []
+        var parts: [(offset: Int64, length: Int64)] = []
         var offset: Int64 = 0
         for i in 0..<n {
             let length = (i == n - 1) ? (fileSize - offset) : base
-            if length <= 0 { break }
-            parts.append((offset, length))
+            parts.append((offset: offset, length: length))
             offset += length
         }
         return parts
     }
 
-    static func encodeMetadata(_ metadata: [String: String]) -> String? {
+    public static func encodeMetadata(_ metadata: [String: String]) -> String? {
         guard !metadata.isEmpty else { return nil }
         return metadata
             .map { key, value in "\(key) \(Data(value.utf8).base64EncodedString())" }

@@ -3,15 +3,15 @@ import CryptoKit
 
 /// Presigned signature for a Bunny TUS upload.
 /// `SHA256(libraryId + apiKey + expirationTime + videoId)`.
-enum Signature {
-    struct Signed {
-        let value: String
+public enum Signature {
+    public struct Signed: Equatable {
+        public let value: String
         /// Expiration as a UNIX timestamp in seconds (string), the form Bunny expects.
-        let expiration: String
+        public let expiration: String
     }
 
     /// Generates a signature expiring `validFor` seconds from now (default 24 h).
-    static func make(
+    public static func make(
         libraryId: String,
         apiKey: String,
         videoId: String,

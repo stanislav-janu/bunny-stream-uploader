@@ -1,20 +1,25 @@
 import Foundation
 
 /// Thin layer over the Bunny Stream REST API. No extra logic.
-struct BunnyAPIClient {
+public struct BunnyAPIClient {
     let credentials: Credentials
-    var session: URLSession = .shared
+    var session: URLSession
+
+    public init(credentials: Credentials, session: URLSession = .shared) {
+        self.credentials = credentials
+        self.session = session
+    }
 
     private var baseURL: URL {
         return URL(string: "https://video.bunnycdn.com/library/\(credentials.libraryId)")!
     }
 
-    enum APIError: LocalizedError {
+    public enum APIError: LocalizedError, Equatable {
         case http(Int, String)
         case decoding
         case missingGuid
 
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .http(let code, let body): return "HTTP \(code): \(body)"
             case .decoding: return String(localized: "Unexpected server response")
@@ -25,7 +30,7 @@ struct BunnyAPIClient {
 
     /// Creates a video object and returns its guid (videoId).
     /// `POST /library/{libraryId}/videos` with the `AccessKey` header.
-    func createVideo(title: String) async throws -> String {
+    public func createVideo(title: String) async throws -> String {
         let url = baseURL.appendingPathComponent("videos")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -37,7 +42,7 @@ struct BunnyAPIClient {
         let (data, response) = try await session.data(for: request)
         try Self.validate(response, data: data)
 
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             throw APIError.decoding
         }
         guard let guid = object["guid"] as? String, !guid.isEmpty else {
@@ -48,7 +53,7 @@ struct BunnyAPIClient {
 
     /// Video status (e.g. to track transcoding after the upload completes).
     /// Returns Bunny's `status` code (0 = created, 3/4 = processing, 4 = ready ...).
-    func getVideoStatus(guid: String) async throws -> Int {
+    public func getVideoStatus(guid: String) async throws -> Int {
         let url = baseURL.appendingPathComponent("videos").appendingPathComponent(guid)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -58,7 +63,7 @@ struct BunnyAPIClient {
         let (data, response) = try await session.data(for: request)
         try Self.validate(response, data: data)
 
-        guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let status = object["status"] as? Int
         else {
             throw APIError.decoding

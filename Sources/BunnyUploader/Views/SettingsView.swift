@@ -1,4 +1,5 @@
 import SwiftUI
+import BunnyUploaderCore
 
 struct SettingsView: View {
     @EnvironmentObject private var engine: UploadEngine

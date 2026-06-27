@@ -1,4 +1,4 @@
-name: Build
+name: Build & Test
 
 on:
   push:
@@ -7,11 +7,17 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  # Thin integration layers (Keychain, TUSKit wrapper) need a real system and are
+  # excluded from the coverage gate; all custom logic is covered.
+  COVERAGE_IGNORE: 'Tests/|\.build/|KeychainStore|TUSUploader\.swift'
+  COVERAGE_MIN: '80'
+
 jobs:
-  build:
+  build-test:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Select latest Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -23,6 +29,30 @@ jobs:
 
       - name: Build (release)
         run: swift build -c release
+
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+
+      - name: Coverage report and gate
+        run: |
+          BIN=$(swift build --show-bin-path)
+          XCTEST=$(find "$BIN" -name '*.xctest' | head -1)
+          BINARY="$XCTEST/Contents/MacOS/$(basename "$XCTEST" .xctest)"
+          PROF=$(find "$BIN/codecov" -name 'default.profdata' | head -1)
+
+          echo '## Test coverage (BunnyUploaderCore)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          xcrun llvm-cov report "$BINARY" -instr-profile "$PROF" \
+            -ignore-filename-regex="$COVERAGE_IGNORE" \
+            Sources/BunnyUploaderCore | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          COV=$(xcrun llvm-cov export "$BINARY" -instr-profile "$PROF" -summary-only \
+            -ignore-filename-regex="$COVERAGE_IGNORE" \
+            Sources/BunnyUploaderCore | python3 -c 'import sys,json;print(round(json.load(sys.stdin)["data"][0]["totals"]["lines"]["percent"],2))')
+          echo "Line coverage: ${COV}% (min ${COVERAGE_MIN}%)"
+          python3 -c "import sys;sys.exit(0 if float('${COV}') >= float('${COVERAGE_MIN}') else 1)" \
+            || { echo "::error::Coverage ${COV}% is below ${COVERAGE_MIN}%"; exit 1; }
 
       - name: Package .app (ad-hoc signed)
         run: ./scripts/make-app.sh release

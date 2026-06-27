@@ -5,13 +5,23 @@ import SwiftUI
 /// computes aggregate throughput. Runs on the main actor; network work is
 /// async (URLSession) or on TUSKit's internal queue, this layer only coordinates.
 @MainActor
-final class UploadEngine: ObservableObject {
-    @Published private(set) var items: [UploadItem] = []
-    @Published var credentials: Credentials
+public final class UploadEngine: ObservableObject {
+    @Published public private(set) var items: [UploadItem] = []
+    @Published public var credentials: Credentials
     /// Aggregate throughput of running uploads in MB/s (published for the UI header).
-    @Published private(set) var totalThroughputMBps: Double = 0
+    @Published public private(set) var totalThroughputMBps: Double = 0
     /// Number of currently running uploads.
-    @Published private(set) var activeCount: Int = 0
+    @Published public private(set) var activeCount: Int = 0
+    /// Aggregate progress (0...1) across running uploads (for the Dock icon).
+    @Published public private(set) var aggregateProgress: Double = 0
+
+    /// UI side-effect hooks, set by the app layer (kept out of Core).
+    public var onUploadFinished: ((UploadItem) -> Void)?
+    public var onUploadFailed: ((UploadItem, String) -> Void)?
+
+    /// Injection points for tests (mock URLProtocol). Default to production behavior.
+    public var apiSession: URLSession = .shared
+    public var parallelSessionConfiguration: URLSessionConfiguration?
 
     private let tus = TUSUploader()
 
@@ -29,18 +39,18 @@ final class UploadEngine: ObservableObject {
     private var parallelUploaders: [UUID: ParallelTUSUploader] = [:]
 
     /// Number of parallel threads to split a single file into (manual mode).
-    @Published var partCount: Int {
+    @Published public var partCount: Int {
         didSet { UserDefaults.standard.set(partCount, forKey: "partCount") }
     }
     /// Automatic thread count based on file size.
-    @Published var autoThreads: Bool {
+    @Published public var autoThreads: Bool {
         didSet { UserDefaults.standard.set(autoThreads, forKey: "autoThreads") }
     }
     /// Files below this threshold use a single stream (splitting small files is pointless).
     private let parallelThresholdBytes: Int64 = 50 * 1024 * 1024
 
     /// Recommended thread count by file size (measured scaling curve).
-    static func autoPartCount(for fileSize: Int64) -> Int {
+    public static func autoPartCount(for fileSize: Int64) -> Int {
         let mb: Int64 = 1024 * 1024
         let gb: Int64 = 1024 * mb
         if fileSize >= gb { return 64 }
@@ -50,43 +60,37 @@ final class UploadEngine: ObservableObject {
     }
 
     /// Thread count chosen for a given file (auto or manual).
-    func threadCount(for fileSize: Int64) -> Int {
+    public func threadCount(for fileSize: Int64) -> Int {
         return autoThreads ? Self.autoPartCount(for: fileSize) : partCount
     }
 
-    init() {
-        self.credentials = KeychainStore.load()
+    /// Pass `credentials` to skip the Keychain read (used by tests).
+    public init(credentials: Credentials? = nil) {
+        self.credentials = credentials ?? KeychainStore.load()
         let stored = UserDefaults.standard.integer(forKey: "partCount")
         self.partCount = stored > 0 ? stored : 64
         self.autoThreads = UserDefaults.standard.object(forKey: "autoThreads") as? Bool ?? true
     }
 
-    var hasCredentials: Bool {
+    public var hasCredentials: Bool {
         return credentials.isComplete
     }
 
-    /// Recomputes aggregate metrics for the header. Call on state/progress change.
+    /// Recomputes aggregate metrics for the header and Dock. Call on state/progress change.
     private func recomputeAggregate() {
         activeCount = items.filter { $0.state.isActive }.count
-        totalThroughputMBps = items
-            .filter { $0.state == .uploading }
-            .reduce(0) { $0 + $1.throughputMBps }
-        updateDockProgress()
-    }
-
-    /// Shows aggregate upload progress on the Dock icon, or clears it when idle.
-    private func updateDockProgress() {
         let uploading = items.filter { $0.state == .uploading }
-        guard !uploading.isEmpty else {
-            DockProgress.clear()
-            return
+        totalThroughputMBps = uploading.reduce(0) { $0 + $1.throughputMBps }
+        if uploading.isEmpty {
+            aggregateProgress = 0
+        } else {
+            let total = uploading.reduce(0.0) { $0 + Double($1.fileSize) }
+            let done = uploading.reduce(0.0) { $0 + Double($1.bytesUploaded) }
+            aggregateProgress = total > 0 ? done / total : 0
         }
-        let total = uploading.reduce(0.0) { $0 + Double($1.fileSize) }
-        let done = uploading.reduce(0.0) { $0 + Double($1.bytesUploaded) }
-        DockProgress.show(progress: total > 0 ? done / total : 0)
     }
 
-    func saveCredentials(_ new: Credentials) {
+    public func saveCredentials(_ new: Credentials) {
         credentials = new
         KeychainStore.save(new)
     }
@@ -94,7 +98,7 @@ final class UploadEngine: ObservableObject {
     // MARK: - Queue
 
     /// Adds a file to the queue and starts its upload right away.
-    func addFile(_ url: URL) {
+    public func addFile(_ url: URL) {
         let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
         let size = Int64(values?.fileSize ?? 0)
         let mime = values?.contentType?.preferredMIMEType ?? "application/octet-stream"
@@ -108,14 +112,14 @@ final class UploadEngine: ObservableObject {
         Task { await self.process(item) }
     }
 
-    func removeItem(_ item: UploadItem) {
+    public func removeItem(_ item: UploadItem) {
         cancelUpload(item)
         items.removeAll { $0 === item }
         samples[item.id] = nil
     }
 
     /// Cancels an item's in-progress upload.
-    func cancelUpload(_ item: UploadItem) {
+    public func cancelUpload(_ item: UploadItem) {
         guard item.state.isActive else { return }
         if let tusId = tusIds[item.id] {
             tus.cancel(id: tusId)
@@ -142,13 +146,13 @@ final class UploadEngine: ObservableObject {
         // 1) Create Video
         item.state = .creatingVideo
         recomputeAggregate()
-        let client = BunnyAPIClient(credentials: credentials)
+        let client = BunnyAPIClient(credentials: credentials, session: apiSession)
         let guid: String
         do {
             guid = try await client.createVideo(title: item.fileName)
         } catch {
             item.state = .error(error.localizedDescription)
-            Notifications.uploadFailed(fileName: item.fileName, message: error.localizedDescription)
+            onUploadFailed?(item, error.localizedDescription)
             return
         }
         // The user may have cancelled the upload in the meantime.
@@ -188,7 +192,7 @@ final class UploadEngine: ObservableObject {
 
     /// Parallel upload of a single file via TUS concatenation (N threads).
     private func runParallel(_ item: UploadItem, headers: [String: String], metadata: [String: String], partCount: Int) async {
-        let uploader = ParallelTUSUploader()
+        let uploader = ParallelTUSUploader(sessionConfiguration: parallelSessionConfiguration)
         parallelUploaders[item.id] = uploader
         let id = item.id
         do {
@@ -213,7 +217,7 @@ final class UploadEngine: ObservableObject {
             item.throughputMBps = 0
             item.state = .error(error.localizedDescription)
             recomputeAggregate()
-            Notifications.uploadFailed(fileName: item.fileName, message: error.localizedDescription)
+            onUploadFailed?(item, error.localizedDescription)
         }
     }
 
@@ -237,7 +241,7 @@ final class UploadEngine: ObservableObject {
                         self?.samples[item.id] = nil
                         self?.tusIds[item.id] = nil
                         self?.recomputeAggregate()
-                        Notifications.uploadFailed(fileName: item.fileName, message: error.localizedDescription)
+                        self?.onUploadFailed?(item, error.localizedDescription)
                     }
                 )
             )
@@ -275,7 +279,7 @@ final class UploadEngine: ObservableObject {
         samples[item.id] = nil
         tusIds[item.id] = nil
         recomputeAggregate()
-        Notifications.uploadFinished(fileName: item.fileName)
+        onUploadFinished?(item)
         // Optionally track transcoding status.
         Task { await self.pollProcessing(item) }
     }
@@ -285,7 +289,7 @@ final class UploadEngine: ObservableObject {
             item.state = .done
             return
         }
-        let client = BunnyAPIClient(credentials: credentials)
+        let client = BunnyAPIClient(credentials: credentials, session: apiSession)
         // A few attempts; Bunny status 3+ means done/playable.
         for _ in 0..<3 {
             try? await Task.sleep(nanoseconds: 2_000_000_000)

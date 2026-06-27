@@ -14,15 +14,26 @@ Minimum target is macOS 26; building needs the Xcode 26 toolchain (Swift 6). The
 
 ## Architecture
 
-- `App/BunnyUploaderApp.swift` — `@main`, `AppDelegate` (Finder "Open with" + `NSServices` Quick Action "Upload to Bunny").
+Two SwiftPM targets: `BunnyUploaderCore` (testable logic library) and `BunnyUploader` (executable: app + views). UI side-effects (Dock, notifications) stay in the executable and are wired into the engine via hooks (`onUploadFinished`, `onUploadFailed`), so Core has no AppKit/UserNotifications dependency.
+
+`Sources/BunnyUploader/` (executable):
+- `App/BunnyUploaderApp.swift` — `@main`, `AppDelegate` (Finder "Open with" + `NSServices` Quick Action "Upload to Bunny"), wires engine hooks and the Dock progress bar.
+- `App/DockProgress`, `App/Notifications` — Dock icon progress bar and completion notifications.
 - `Views/` — SwiftUI: `ContentView`, `DropZone`, `UploadRowView`, `SettingsView`.
-- `Engine/UploadEngine` — main-actor coordinator: queue, strategy choice, throughput (4 s moving average), cancellation.
-- `TUS/ParallelTUSUploader` — the core: custom parallel concatenation uploader (one `URLSession`/TCP connection per part, `pread` off the cooperative pool, merge with `Upload-Concat: final`). Not an actor on purpose.
+
+`Sources/BunnyUploaderCore/` (library):
+- `Engine/UploadEngine` — main-actor coordinator: queue, strategy choice, throughput (4 s moving average), cancellation. `init(credentials:)` and `apiSession` / `parallelSessionConfiguration` exist for test injection.
+- `TUS/ParallelTUSUploader` — the core: custom parallel concatenation uploader (one `URLSession`/TCP connection per part, `pread` off the cooperative pool, merge with `Upload-Concat: final`). Not an actor on purpose; takes an injectable session config.
 - `TUS/TUSUploader` — TUSKit wrapper for single-stream + resume (files < 50 MB and fallback).
-- `Bunny/` — `BunnyAPIClient` (Create/Get Video), `Signature` (`SHA256(libraryId+apiKey+expiration+videoId)`).
+- `Bunny/` — `BunnyAPIClient` (Create/Get Video, injectable session), `Signature` (`SHA256(libraryId+apiKey+expiration+videoId)`).
 - `Keychain/KeychainStore` — credentials in one keychain item.
 - `Models/UploadItem` — upload item and `UploadState`.
-- `Resources/Localizations/*.lproj` — en (base), cs, hu, pl, de.
+
+`Resources/Localizations/*.lproj` — en (base), cs, hu, pl, de.
+
+## Tests
+
+`swift test --enable-code-coverage`. Tests live in `Tests/BunnyUploaderCoreTests` and use `MockURLProtocol` for networking. CI enforces a coverage gate (min 80%) over Core, excluding the thin integration layers (`KeychainStore`, `TUSUploader`) that need a real system. Keep custom logic (parsing, signature, splitting, parallel upload, API, engine flow) covered. When testing code that constructs `UploadEngine`, pass `credentials:` to avoid a Keychain read that hangs in the test process.
 
 ## Conventions
 
