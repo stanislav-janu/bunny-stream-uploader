@@ -1,0 +1,46 @@
+/* Window and main UI */
+"Settings" = "Nastavení";
+"Ready" = "Připraveno";
+"Missing credentials. Open Settings (⌘,)" = "Chybí přihlašovací údaje. Otevři Nastavení (⌘,)";
+"%lld concurrent" = "%lld souběžně";
+"No uploads" = "Žádné uploady";
+"Drag a video file into the window above." = "Přetáhni video soubor do okna výše.";
+"Drop a video here" = "Přetáhni sem video";
+"Cancel upload" = "Zrušit upload";
+"Remove from list" = "Odebrat ze seznamu";
+
+/* Settings */
+"Bunny Stream credentials" = "Přihlašovací údaje Bunny Stream";
+"Library ID" = "Library ID";
+"e.g. 123456" = "např. 123456";
+"API key (Stream)" = "API klíč (Stream)";
+"Paste API key" = "Vlož API klíč";
+"Stored securely in Keychain. The key is never shown or logged." = "Uloženo bezpečně v Keychain. Klíč se nikde nezobrazuje ani neloguje.";
+"Upload speed" = "Rychlost uploadu";
+"Automatically by file size" = "Automaticky podle velikosti souboru";
+"≥ 1 GB → 64 threads · 500 MB–1 GB → 32 · 100–500 MB → 16 · 50–100 MB → 8 · under 50 MB → single stream." = "≥ 1 GB → 64 vláken · 500 MB–1 GB → 32 · 100–500 MB → 16 · 50–100 MB → 8 · pod 50 MB → jeden stream.";
+"Parallel threads" = "Paralelních vláken";
+"The file is split into this many parts uploaded in parallel (TUS concatenation). Files under 50 MB always use a single stream." = "Soubor se rozdělí na tolik částí a nahraje je souběžně (TUS concatenation). Soubory pod 50 MB jdou vždy jedním streamem.";
+"Saved" = "Uloženo";
+"Save" = "Uložit";
+
+/* Upload states */
+"Waiting" = "Čeká";
+"Creating video" = "Vytvářím video";
+"Uploading" = "Nahrávám";
+"Bunny processing" = "Zpracovává Bunny";
+"Done" = "Hotovo";
+"Cancelled" = "Zrušeno";
+"Error: %@" = "Chyba: %@";
+
+/* Errors */
+"Unexpected server response" = "Nečekaná odpověď serveru";
+"Bunny did not return a videoId (guid)" = "Bunny nevrátil videoId (guid)";
+"Could not open file: %@" = "Nepodařilo se otevřít soubor: %@";
+"File read error (errno %lld)" = "Chyba čtení souboru (errno %lld)";
+"Creating part failed (HTTP %lld): %@" = "Vytvoření části selhalo (HTTP %lld): %@";
+"Part upload failed (HTTP %lld): %@" = "Upload části selhal (HTTP %lld): %@";
+"Final concatenation failed (HTTP %lld): %@" = "Finální spojení selhalo (HTTP %lld): %@";
+"Server did not return a part Location URL" = "Server nevrátil Location URL části";
+"Missing API key or Library ID (Settings)" = "Chybí API klíč nebo Library ID (Nastavení)";
+"Could not start TUS: %@" = "TUS nešlo spustit: %@";

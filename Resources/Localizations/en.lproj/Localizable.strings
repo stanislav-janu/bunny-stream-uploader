@@ -1,0 +1,46 @@
+/* Window and main UI */
+"Settings" = "Settings";
+"Ready" = "Ready";
+"Missing credentials. Open Settings (⌘,)" = "Missing credentials. Open Settings (⌘,)";
+"%lld concurrent" = "%lld concurrent";
+"No uploads" = "No uploads";
+"Drag a video file into the window above." = "Drag a video file into the window above.";
+"Drop a video here" = "Drop a video here";
+"Cancel upload" = "Cancel upload";
+"Remove from list" = "Remove from list";
+
+/* Settings */
+"Bunny Stream credentials" = "Bunny Stream credentials";
+"Library ID" = "Library ID";
+"e.g. 123456" = "e.g. 123456";
+"API key (Stream)" = "API key (Stream)";
+"Paste API key" = "Paste API key";
+"Stored securely in Keychain. The key is never shown or logged." = "Stored securely in Keychain. The key is never shown or logged.";
+"Upload speed" = "Upload speed";
+"Automatically by file size" = "Automatically by file size";
+"≥ 1 GB → 64 threads · 500 MB–1 GB → 32 · 100–500 MB → 16 · 50–100 MB → 8 · under 50 MB → single stream." = "≥ 1 GB → 64 threads · 500 MB–1 GB → 32 · 100–500 MB → 16 · 50–100 MB → 8 · under 50 MB → single stream.";
+"Parallel threads" = "Parallel threads";
+"The file is split into this many parts uploaded in parallel (TUS concatenation). Files under 50 MB always use a single stream." = "The file is split into this many parts uploaded in parallel (TUS concatenation). Files under 50 MB always use a single stream.";
+"Saved" = "Saved";
+"Save" = "Save";
+
+/* Upload states */
+"Waiting" = "Waiting";
+"Creating video" = "Creating video";
+"Uploading" = "Uploading";
+"Bunny processing" = "Bunny processing";
+"Done" = "Done";
+"Cancelled" = "Cancelled";
+"Error: %@" = "Error: %@";
+
+/* Errors */
+"Unexpected server response" = "Unexpected server response";
+"Bunny did not return a videoId (guid)" = "Bunny did not return a videoId (guid)";
+"Could not open file: %@" = "Could not open file: %@";
+"File read error (errno %lld)" = "File read error (errno %lld)";
+"Creating part failed (HTTP %lld): %@" = "Creating part failed (HTTP %lld): %@";
+"Part upload failed (HTTP %lld): %@" = "Part upload failed (HTTP %lld): %@";
+"Final concatenation failed (HTTP %lld): %@" = "Final concatenation failed (HTTP %lld): %@";
+"Server did not return a part Location URL" = "Server did not return a part Location URL";
+"Missing API key or Library ID (Settings)" = "Missing API key or Library ID (Settings)";
+"Could not start TUS: %@" = "Could not start TUS: %@";

@@ -1,0 +1,13 @@
+.DS_Store
+.build/
+BunnyUploader.app/
+*.xcodeproj
+.swiftpm/
+DerivedData/
+*.log
+
+# Internal working files (not part of the public repository)
+bunny-stream-uploader-navrh.md
+docs/superpowers/
+docs/parallel-upload.md
+docs/build-and-packaging.md
