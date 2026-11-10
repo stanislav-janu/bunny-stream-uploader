@@ -167,7 +167,8 @@ Depends: S-003
 Acceptance:
 - [unit] The engine holds a "prevent idle sleep" assertion while any upload is active and releases it when none is.
 - [manual] With display sleep set to 1 minute, a 10 minute upload finishes; the display may sleep, the system does not.
-Status: doing
+- [self] `--sleep-check` uploads a test file with the real engine against the real library; `pmset -g assertions` lists the app's PreventUserIdleSystemSleep assertion while it uploads and not after.
+Status: done
 
 ### S-012 Confirm quitting while uploads run
 As the user, I press Command-Q during an upload and the app asks before stopping it.
@@ -269,7 +270,7 @@ Screens: main-empty
 Acceptance:
 - [self] Command-O opens a panel filtered to the supported video types, multiple selection allowed.
 - [snap] The empty state also offers a "Choose Videos…" button.
-Status: todo
+Status: done
 
 ### S-019 Queue several files
 As the user, I drop ten files at once and they upload one after another at full speed instead of all at once.
@@ -279,23 +280,23 @@ Acceptance:
 - [unit] Only one parallel upload runs at a time; small single-stream files may run up to 3 at once beside it.
 - [snap] Queued rows show "Waiting" with their place in the queue.
 - [unit] Cancelling the running upload starts the next queued one.
-Status: todo
+Status: done
 
 ### S-020 Control rows with the keyboard
 As the user, I select a row with the arrow keys and act on it without the mouse.
 Screens: main-finished
 Depends: S-007
 Acceptance:
-- [self] Up and Down move the selection; Delete removes a finished row; Command-Period cancels the selected active row; Command-C copies its video ID.
-Status: todo
+- [self] Up and Down move the selection; Delete removes a finished row; Command-Period cancels the selected active row; Command-C (Edit > Copy) copies its video ID.
+Status: done
 
 ### S-021 Use the Upload menu
 As the user, I find every action on uploads in a menu with its shortcut.
 Depends: S-018, S-020
 Acceptance:
-- [self] The menu bar has File > Open (Command-O) and an Upload menu with Cancel (Command-Period), Retry (Command-R), Copy ID (Command-C), Cancel All, and Clear Finished.
+- [self] The menu bar has File > Open (Command-O) and an Upload menu with Cancel (Command-Period), Retry (Command-R), Copy ID (Shift-Command-C), Cancel All, and Clear Finished.
 - [self] Items are disabled when they do not apply to the selection.
-Status: todo
+Status: done
 
 ## M5 System: upload from anywhere on the Mac
 
@@ -330,23 +331,23 @@ As the user, I see one consistent accent, spacing, and radius across the window,
 Screens: main-empty, main-uploading, main-finished, settings
 Acceptance:
 - [snap] Colors, radii, and spacing come from Swift tokens described in `design/DESIGN-SYSTEM.md`; no literal colors or radii in views.
-- [snap] Light and dark snapshots of every page pass the contrast check.
-Status: todo
+- [snap] Light and dark snapshots of every page (`--snapshot <folder>`) pass the contrast check.
+Status: done
 
 ### S-027 Liquid Glass app icon
 As the user, I see a sharp Liquid Glass icon in the Dock, Finder, and notifications.
 Acceptance:
-- [snap] `Icon/AppIcon.icon` compiles with actool and replaces `Resources/AppIcon.icns` in the bundle.
+- [snap] `Icon/AppIcon.icon` compiles with actool (`tools/make_icon.sh`) into `Resources/Assets.car` and `Resources/AppIcon.icns`, both in the bundle.
 - [snap] The icon reads in default, dark, clear, and tinted looks.
-Status: todo
+Status: done
 
 ### S-028 Act on a row from its context menu
 As the user, I right-click a row and see everything I can do with it.
 Screens: main-row-menu
 Depends: S-006, S-007, S-016
 Acceptance:
-- [snap] The menu has Copy ID, Copy embed link, Open in Bunny, Show in Finder, Retry, Cancel, Remove, each only when it applies.
-Status: todo
+- [snap] The menu has Copy ID, Copy Embed Link, Play in Browser, Copy Error Message, Retry, Cancel, Show in Finder, Remove, each only when it applies.
+Status: done
 
 ## Later
 

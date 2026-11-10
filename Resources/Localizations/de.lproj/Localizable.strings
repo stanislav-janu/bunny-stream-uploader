@@ -2,8 +2,6 @@
 "Settings" = "Einstellungen";
 "Ready" = "Bereit";
 "%lld concurrent" = "%lld gleichzeitig";
-"No uploads" = "Keine Uploads";
-"Drag a video file into the window above." = "Ziehe eine Videodatei in das Fenster oben.";
 "Bunny Stream credentials" = "Bunny Stream Anmeldedaten";
 "Library ID" = "Library ID";
 "e.g. 123456" = "z. B. 123456";
@@ -90,3 +88,14 @@
 "Upload again from the start?" = "Von vorn neu hochladen?";
 "Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "Bunny hat keinen Teil dieses Uploads, an den sich anknüpfen lässt. Die ganze Datei (%@) wird erneut hochgeladen.";
 "Upload Again" = "Erneut hochladen";
+
+/* Queue, keyboard, Upload menu */
+"Open…" = "Öffnen …";
+"Upload" = "Hochladen";
+"Choose Videos" = "Videos auswählen";
+"Choose Videos…" = "Videos auswählen …";
+"No uploads yet" = "Noch keine Uploads";
+"Drag videos into the window above, or choose them." = "Ziehe Videos in das Fenster oben oder wähle sie aus.";
+"Cancel All" = "Alle abbrechen";
+"Show in Finder" = "Im Finder zeigen";
+"Position %lld in the queue" = "Position %lld in der Warteschlange";

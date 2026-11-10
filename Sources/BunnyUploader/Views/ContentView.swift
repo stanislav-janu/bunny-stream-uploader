@@ -8,6 +8,9 @@ struct ContentView: View {
     @State private var isTargeted = false
     /// A row whose Retry would upload the whole file again; the alert asks first.
     @State private var restartCandidate: UploadItem?
+    /// Selected row, moved with the arrow keys.
+    @State private var selectedId: UUID?
+    @FocusState private var listFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -18,7 +21,7 @@ struct ContentView: View {
                     engine.addFile(url)
                 }
             }
-            .padding(16)
+            .padding(Space.l)
 
             Divider()
 
@@ -28,6 +31,7 @@ struct ContentView: View {
                 uploadList
             }
         }
+        .focusedSceneValue(\.uploadActions, actions)
         .alert(
             Text("Upload again from the start?"),
             isPresented: Binding(
@@ -66,11 +70,11 @@ struct ContentView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s) {
             Image(systemName: "arrow.up.to.line.circle.fill")
                 .foregroundStyle(.tint)
                 .font(.title2)
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: Space.xxs) {
                 Text("Bunny Stream Uploader")
                     .font(.headline)
                 if engine.hasCredentials {
@@ -80,12 +84,12 @@ struct ContentView: View {
                 } else {
                     Label("Credentials missing", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Palette.failure)
                 }
             }
             Spacer()
             if engine.activeCount > 0 {
-                VStack(alignment: .trailing, spacing: 1) {
+                VStack(alignment: .trailing, spacing: Space.xxs) {
                     Text(String(format: "%.1f MB/s", engine.totalThroughputMBps))
                         .font(.title3.monospacedDigit().weight(.semibold))
                         .foregroundStyle(.tint)
@@ -95,41 +99,142 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
+        .padding(.horizontal, Space.l)
+        .padding(.top, Space.m)
     }
 
     private var emptyState: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Space.s) {
             Spacer()
             Image(systemName: "tray.and.arrow.up")
-                .font(.system(size: 34))
+                .font(.system(size: Layout.heroSymbol))
                 .foregroundStyle(.secondary)
-            Text("No uploads")
+            Text("No uploads yet")
                 .foregroundStyle(.secondary)
-            Text("Drag a video file into the window above.")
+            Text("Drag videos into the window above, or choose them.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+            Button("Choose Videos…") {
+                VideoPicker.choose { urls in
+                    for url in urls {
+                        engine.addFile(url)
+                    }
+                }
+            }
+            .padding(.top, Space.s)
+            .disabled(!engine.hasCredentials)
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var uploadList: some View {
-        ScrollView {
-            LazyVStack(spacing: 8) {
-                ForEach(engine.items) { item in
-                    UploadRowView(
-                        item: item,
-                        hasCredentials: engine.hasCredentials,
-                        onRemove: { remove(item) },
-                        onCancel: { engine.cancelUpload(item) },
-                        onRetry: { askRetry(item) }
-                    )
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: Space.s) {
+                    ForEach(engine.items) { item in
+                        UploadRowView(
+                            item: item,
+                            hasCredentials: engine.hasCredentials,
+                            isSelected: item.id == selectedId,
+                            queuePosition: engine.queuePosition(of: item),
+                            onRemove: { remove(item) },
+                            onCancel: { engine.cancelUpload(item) },
+                            onRetry: { askRetry(item) }
+                        )
+                        .id(item.id)
+                        .simultaneousGesture(TapGesture().onEnded {
+                            selectedId = item.id
+                            listFocused = true
+                        })
+                    }
                 }
+                .padding(Space.l)
             }
-            .padding(16)
+            .focusable()
+            .focusEffectDisabled()
+            .focused($listFocused)
+            .onKeyPress(.upArrow) {
+                moveSelection(by: -1, proxy: proxy)
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                moveSelection(by: 1, proxy: proxy)
+                return .handled
+            }
+            .onKeyPress(.delete) {
+                removeSelectedIfFinished()
+            }
+            .onKeyPress(.deleteForward) {
+                removeSelectedIfFinished()
+            }
+            .onCopyCommand {
+                guard let videoId = selectedItem?.videoId else { return [] }
+                return [NSItemProvider(object: videoId as NSString)]
+            }
         }
+    }
+
+    // MARK: - Selection and keyboard
+
+    private var selectedItem: UploadItem? {
+        guard let selectedId else { return nil }
+        return engine.items.first { $0.id == selectedId }
+    }
+
+    private func moveSelection(by step: Int, proxy: ScrollViewProxy) {
+        let items = engine.items
+        guard !items.isEmpty else { return }
+        let current = items.firstIndex { $0.id == selectedId }
+        let next: Int
+        if let current {
+            next = min(max(current + step, 0), items.count - 1)
+        } else {
+            next = step > 0 ? 0 : items.count - 1
+        }
+        selectedId = items[next].id
+        proxy.scrollTo(items[next].id)
+    }
+
+    private func removeSelectedIfFinished() -> KeyPress.Result {
+        guard let item = selectedItem, item.state.isTerminal else { return .ignored }
+        let index = engine.items.firstIndex { $0 === item }
+        remove(item)
+        if let index, !engine.items.isEmpty {
+            selectedId = engine.items[min(index, engine.items.count - 1)].id
+        } else {
+            selectedId = nil
+        }
+        return .handled
+    }
+
+    /// What the Upload menu can do with the selected row.
+    private var actions: UploadActions {
+        let item = selectedItem
+        return UploadActions(
+            canCancel: item.map { $0.state.isActive || $0.state == .idle } ?? false,
+            canRetry: item.map { $0.state.canRetry && $0.fileExists && engine.hasCredentials } ?? false,
+            canCopyID: item?.videoId != nil,
+            cancel: {
+                if let item {
+                    engine.cancelUpload(item)
+                }
+            },
+            retry: {
+                if let item {
+                    askRetry(item)
+                }
+            },
+            copyID: {
+                if let videoId = item?.videoId {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(videoId, forType: .string)
+                }
+            },
+            clearFinished: {
+                clearFinished()
+            }
+        )
     }
 
     /// Retry continues or finishes without asking; only a full upload from the start is confirmed.

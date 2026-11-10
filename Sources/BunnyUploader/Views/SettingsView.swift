@@ -21,13 +21,13 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: Space.xl) {
             // MARK: Credentials
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Space.m) {
                 Text("Bunny Stream credentials")
                     .font(.headline)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Space.xs) {
                     Text("Library ID")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -38,7 +38,7 @@ struct SettingsView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: Space.xs) {
                     Text("API key (Stream)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -63,7 +63,7 @@ struct SettingsView: View {
             Divider()
 
             // MARK: Speed
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Space.m) {
                 Text("Upload speed")
                     .font(.headline)
 
@@ -81,7 +81,7 @@ struct SettingsView: View {
                         Stepper(value: $engine.partCount, in: 1...64) {
                             Text("\(engine.partCount)")
                                 .monospacedDigit()
-                                .frame(minWidth: 24, alignment: .trailing)
+                                .frame(minWidth: Layout.stepperValueWidth, alignment: .trailing)
                         }
                     }
                     Text("The file is split into this many parts uploaded in parallel (TUS concatenation). Files under 50 MB always use a single stream.")
@@ -103,7 +103,7 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 } else if savedNote {
                     Label("Saved", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(Palette.success)
                         .font(.caption)
                 } else if let checkError, checkError != .keyRejected, checkError != .libraryNotFound {
                     errorText
@@ -116,8 +116,8 @@ struct SettingsView: View {
                 .disabled(isChecking || apiKey.isEmpty || libraryId.isEmpty)
             }
         }
-        .padding(24)
-        .frame(width: 460)
+        .padding(Space.xxl)
+        .frame(width: Layout.settingsWidth)
         .onAppear {
             apiKey = engine.credentials.apiKey
             libraryId = engine.credentials.libraryId
@@ -136,13 +136,13 @@ struct SettingsView: View {
         if let checkError {
             Label(checkError.message, systemImage: "exclamationmark.triangle.fill")
                 .font(.caption)
-                .foregroundStyle(.red)
+                .foregroundStyle(Palette.failure)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var collectionSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: Space.m) {
             Text("Collection")
                 .font(.headline)
             HStack {
@@ -163,7 +163,7 @@ struct SettingsView: View {
             if collectionsState == .failed {
                 HStack {
                     Label("Unable to load collections.", systemImage: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(Palette.failure)
                     Button("Try Again") {
                         loadCollections()
                     }

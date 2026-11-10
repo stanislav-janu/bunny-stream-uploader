@@ -39,6 +39,14 @@ Two SwiftPM targets: `BunnyUploaderCore` (testable logic library) and `BunnyUplo
 
 `Resources/Localizations/*.lproj` — en (base), cs, hu, pl, de.
 
+## Design
+
+Design rules: `design/DESIGN-SYSTEM.md`. Use its tokens; never raw colors, radii, or durations.
+
+App icon: `Icon/AppIcon.icon` (Icon Composer file, SVG layers). After editing it, run `tools/make_icon.sh` (writes `Resources/Assets.car` and `Resources/AppIcon.icns`, both committed) and review with `tools/icon_review.sh`.
+
+Visual check: `./BunnyUploader.app/Contents/MacOS/BunnyUploader --snapshot <folder>` renders the main window (sample uploads and empty) and Settings in light and dark mode to PNG files, with sample data only (no Keychain, no network).
+
 ## Tests
 
 `swift test --enable-code-coverage`. Tests live in `Tests/BunnyUploaderCoreTests` and use `MockURLProtocol` for networking. CI enforces a coverage gate (min 80%) over Core, excluding the thin integration layers (`KeychainStore`, `TUSUploader`) that need a real system. Keep custom logic (parsing, signature, splitting, parallel upload, API, engine flow) covered. When testing code that constructs `UploadEngine`, pass `credentials:` to avoid a Keychain read that hangs in the test process.

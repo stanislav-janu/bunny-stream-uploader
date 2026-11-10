@@ -38,7 +38,77 @@ public final class UploadEngine: ObservableObject {
     /// Running uploads that quitting would stop. An upload whose final request already
     /// went out is not counted: Bunny finishes it without the app.
     public var uploadsBlockingQuit: Int {
-        return items.filter { $0.state.isActive && !$0.finalSent }.count
+        return items.filter { ($0.state.isActive && !$0.finalSent) || $0.state == .idle }.count
+    }
+
+    // MARK: - Queue
+
+    /// Small single-stream uploads that may run beside the one parallel upload.
+    public nonisolated static let maxSingleStreamUploads = 3
+
+    /// Whether an upload uses the parallel uploader (many connections), which runs one at a time.
+    public func runsParallel(_ item: UploadItem) -> Bool {
+        if item.videoId != nil, let saved = item.resume, saved.isValid,
+           saved.matches(fileSize: item.fileSize, fileModified: item.fileModified) {
+            return true
+        }
+        return threadCount(for: item.fileSize) > 1 && item.fileSize >= parallelThresholdBytes
+    }
+
+    /// Which queued uploads may start now. `queued` is oldest first; a parallel upload
+    /// waits while another one runs, small single-stream ones fill up to
+    /// `maxSingleStreamUploads` beside it, and a later file may pass one that has to wait.
+    public nonisolated static func uploadsToStart(
+        queued: [(id: UUID, parallel: Bool)],
+        parallelRunning: Bool,
+        singleRunning: Int
+    ) -> [UUID] {
+        var parallelBusy = parallelRunning
+        var singleBusy = singleRunning
+        var start: [UUID] = []
+        for entry in queued {
+            if entry.parallel {
+                if parallelBusy {
+                    continue
+                }
+                parallelBusy = true
+            } else {
+                if singleBusy >= maxSingleStreamUploads {
+                    continue
+                }
+                singleBusy += 1
+            }
+            start.append(entry.id)
+        }
+        return start
+    }
+
+    /// Queued (Waiting) uploads, oldest first.
+    private var queuedItems: [UploadItem] {
+        return items.reversed().filter { $0.state == .idle }
+    }
+
+    /// Place of a waiting upload in the queue (1 = next), or nil when it is not waiting.
+    public func queuePosition(of item: UploadItem) -> Int? {
+        guard let index = queuedItems.firstIndex(where: { $0 === item }) else { return nil }
+        return index + 1
+    }
+
+    /// Starts every queued upload that has a free slot.
+    private func startQueued() {
+        let running = items.filter { $0.state.isActive }
+        let ids = Self.uploadsToStart(
+            queued: queuedItems.map { ($0.id, runsParallel($0)) },
+            parallelRunning: running.contains { runsParallel($0) },
+            singleRunning: running.filter { !runsParallel($0) }.count
+        )
+        for id in ids {
+            guard let item = items.first(where: { $0.id == id }) else { continue }
+            // Claim the slot now; `process` runs on the next turn.
+            item.state = .creatingVideo
+            Task { await self.process(item) }
+        }
+        recomputeAggregate()
     }
 
     /// Backoff before each retry of a failed part request (tests shorten it).
@@ -240,12 +310,21 @@ public final class UploadEngine: ObservableObject {
                     self.objectWillChange.send()
                     self.recomputeAggregate()
                     self.saveHistory()
+                    // A finished, failed, or cancelled upload frees its slot.
+                    if state.isTerminal {
+                        self.startQueued()
+                    }
                 }
             }
     }
 
     private func saveHistory() {
         history?.save(items.map(\.record))
+    }
+
+    /// Whether any upload is running or waiting (Cancel All applies).
+    public var hasRunningOrWaiting: Bool {
+        return items.contains { $0.state.isActive || $0.state == .idle }
     }
 
     /// Done rows that Clear Finished would remove.
@@ -295,7 +374,7 @@ public final class UploadEngine: ObservableObject {
         items.insert(item, at: 0)
         observe(item)
         saveHistory()
-        Task { await self.process(item) }
+        startQueued()
     }
 
     /// Removes a row. A video that never finished uploading is deleted in Bunny too;
@@ -354,11 +433,25 @@ public final class UploadEngine: ObservableObject {
         item.finalSent = false
         samples[item.id] = nil
         item.state = .idle
-        Task { await self.process(item) }
+        startQueued()
+    }
+
+    /// Cancels every running and waiting upload.
+    public func cancelAll() {
+        for item in items where item.state.isActive || item.state == .idle {
+            cancelUpload(item)
+        }
     }
 
     /// Cancels an item's in-progress upload.
     public func cancelUpload(_ item: UploadItem) {
+        if item.state == .idle {
+            // Still waiting in the queue: only a retried row has a video to drop.
+            item.state = .cancelled
+            recomputeAggregate()
+            discardVideo(item)
+            return
+        }
         guard item.state.isActive else { return }
         if let tusId = tusIds[item.id] {
             tus.cancel(id: tusId)
@@ -401,13 +494,14 @@ public final class UploadEngine: ObservableObject {
     // MARK: - Single upload flow
 
     private func process(_ item: UploadItem) async {
+        // The queue claimed the slot with Creating video; Cancel may have come in since.
+        guard item.state == .creatingVideo else { return }
         guard credentials.isComplete else {
             item.state = .error(String(localized: "Missing API key or Library ID (Settings)"))
             return
         }
 
         // 1) Create Video, or reuse the one a retried upload already has.
-        item.state = .creatingVideo
         recomputeAggregate()
         var reusable: String?
         if let existing = item.videoId, item.libraryId == credentials.libraryId {

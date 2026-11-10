@@ -70,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         "mp4", "m4v", "mov", "mkv", "webm", "avi", "flv", "wmv", "ts", "mpeg", "mpg",
     ]
 
-    private static func isAcceptedVideo(_ url: URL) -> Bool {
+    static func isAcceptedVideo(_ url: URL) -> Bool {
         return acceptedExtensions.contains(url.pathExtension.lowercased())
     }
 }
@@ -90,8 +90,14 @@ struct BunnyUploaderApp: App {
         if let index = CommandLine.arguments.firstIndex(of: "--video-status"), index + 1 < CommandLine.arguments.count {
             FaultTestCommand.statusAndExit(guid: CommandLine.arguments[index + 1])
         }
+        if CommandLine.arguments.contains("--sleep-check") {
+            FaultTestCommand.sleepCheckAndExit()
+        }
         if CommandLine.arguments.contains("--final-probe") {
             FaultTestCommand.probeAndExit()
+        }
+        if let index = CommandLine.arguments.firstIndex(of: "--snapshot"), index + 1 < CommandLine.arguments.count {
+            SnapshotCommand.runAndExit(folder: CommandLine.arguments[index + 1])
         }
         if CommandLine.arguments.contains("--recent-videos") {
             FaultTestCommand.listRecentAndExit()
@@ -102,7 +108,7 @@ struct BunnyUploaderApp: App {
         Window("Bunny Stream Uploader", id: "main") {
             ContentView()
                 .environmentObject(engine)
-                .frame(minWidth: 560, minHeight: 420)
+                .frame(minWidth: Layout.windowMinWidth, minHeight: Layout.windowMinHeight)
                 .onAppear {
                     appDelegate.onOpen = { urls in
                         for url in urls {
@@ -129,6 +135,9 @@ struct BunnyUploaderApp: App {
                 }
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            UploadCommands(engine: engine)
+        }
 
         Settings {
             SettingsView()
@@ -187,6 +196,20 @@ enum FaultTestCommand {
         }
         done.wait()
         exit(0)
+    }
+
+    /// `BunnyUploader --sleep-check`: uploads a test file with the real engine and checks
+    /// the sleep assertion with pmset. Runs the main run loop, since the engine is main-actor.
+    static func sleepCheckAndExit() -> Never {
+        Task { @MainActor in
+            let passed = await SleepCheck.run { line in
+                print(line)
+                fflush(stdout)
+            }
+            exit(passed ? 0 : 1)
+        }
+        RunLoop.main.run()
+        exit(1)
     }
 
     /// `BunnyUploader --final-probe`: checks whether Bunny finishes a dropped final request.

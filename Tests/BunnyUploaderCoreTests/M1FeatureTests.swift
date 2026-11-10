@@ -355,6 +355,21 @@ final class M1FeatureTests: XCTestCase {
         XCTAssertEqual(store.load().first?.videoId, "kept")
     }
 
+    func testCancelWhileWaitingCreatesNothing() async {
+        let log = DeleteLog()
+        installDeleteHandler(log, createDelay: 0.3)
+        let engine = makeEngine()
+        let file = makeFile()
+        defer { try? FileManager.default.removeItem(at: file) }
+        engine.addFile(file)
+        let item = engine.items[0]
+        engine.cancelUpload(item)
+        try? await Task.sleep(nanoseconds: 500_000_000)
+        XCTAssertEqual(item.state, .cancelled)
+        XCTAssertNil(item.videoId)
+        XCTAssertTrue(log.paths.isEmpty)
+    }
+
     func testNewestUploadIsOnTop() {
         MockURLProtocol.handler = { _ in (500, Data(), [:]) }
         let engine = makeEngine()
@@ -463,7 +478,8 @@ final class M1FeatureTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: file) }
         engine.addFile(file)
         let item = engine.items[0]
-        await waitUntil { item.state == .creatingVideo }
+        // Cancel while the Create Video request (0.3 s) is on its way.
+        try? await Task.sleep(nanoseconds: 100_000_000)
         engine.cancelUpload(item)
         await waitUntil { !log.paths.isEmpty }
         XCTAssertEqual(log.paths, ["/library/1/videos/g"])

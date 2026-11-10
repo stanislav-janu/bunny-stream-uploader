@@ -5,6 +5,9 @@ import BunnyUploaderCore
 struct UploadRowView: View {
     @ObservedObject var item: UploadItem
     let hasCredentials: Bool
+    var isSelected = false
+    /// Place in the upload queue while Waiting.
+    var queuePosition: Int?
     let onRemove: () -> Void
     let onCancel: () -> Void
     let onRetry: () -> Void
@@ -12,7 +15,7 @@ struct UploadRowView: View {
     @State private var copied = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.s) {
             titleLine
 
             ProgressView(value: item.progress)
@@ -33,11 +36,16 @@ struct UploadRowView: View {
                 videoIdLine(videoId)
             }
         }
-        .padding(12)
+        .padding(Space.m)
         .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.secondary.opacity(0.06))
+            RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+                .fill(isSelected ? Surface.rowSelected : Surface.row)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.row, style: .continuous)
+                .strokeBorder(isSelected ? Surface.rowSelectedBorder : Color.clear, lineWidth: Layout.selectionBorderWidth)
+        )
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
             contextMenuItems
         }
@@ -64,12 +72,12 @@ struct UploadRowView: View {
 
     @ViewBuilder
     private var actionButtons: some View {
-        if item.state.isActive {
+        if item.state.isActive || item.state == .idle {
             Button {
                 onCancel()
             } label: {
                 Image(systemName: "stop.circle.fill")
-                    .foregroundStyle(.red)
+                    .foregroundStyle(Palette.failure)
             }
             .buttonStyle(.plain)
             .help("Cancel this upload and delete the unfinished video in Bunny")
@@ -112,7 +120,11 @@ struct UploadRowView: View {
                 processingLabel(processing)
             }
             Spacer()
-            if item.state == .uploading {
+            if item.state == .idle, let queuePosition {
+                Text("Position \(queuePosition) in the queue")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if item.state == .uploading {
                 Text(String(format: "%.1f MB/s", item.throughputMBps))
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
@@ -128,7 +140,7 @@ struct UploadRowView: View {
     }
 
     private func videoIdLine(_ videoId: String) -> some View {
-        HStack(spacing: 6) {
+        HStack(spacing: Space.s) {
             Text("Video ID")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
@@ -136,7 +148,7 @@ struct UploadRowView: View {
             Button {
                 copy(videoId)
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: Space.xs) {
                     Text(videoId)
                         .font(.caption.monospaced())
                         .lineLimit(1)
@@ -151,7 +163,7 @@ struct UploadRowView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .foregroundStyle(copied ? Color.green : Color.secondary)
+            .foregroundStyle(copied ? Palette.success : Color.secondary)
             .help(Text("Click to copy the video ID: \(videoId)"))
             .accessibilityLabel(Text("Copy ID"))
             .accessibilityValue(Text(videoId))
@@ -198,9 +210,14 @@ struct UploadRowView: View {
                 onRetry()
             }
         }
-        if item.state.isActive {
+        if item.state.isActive || item.state == .idle {
             Button("Cancel") {
                 onCancel()
+            }
+        }
+        if item.fileExists {
+            Button("Show in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([item.fileURL])
             }
         }
         if item.state.isTerminal {
@@ -224,7 +241,7 @@ struct UploadRowView: View {
             }
         }
         .font(.caption)
-        .foregroundStyle(processing == .failed ? Color.red : Color.secondary)
+        .foregroundStyle(processing == .failed ? Palette.failure : Color.secondary)
         .help(processing == .processing ? Text("Bunny is transcoding the video. The video ID already works.") : Text(processing.label))
     }
 
@@ -257,16 +274,16 @@ struct UploadRowView: View {
 
     private var progressColor: Color {
         switch item.state {
-        case .done: return .green
-        case .error: return .red
+        case .done: return Palette.success
+        case .error: return Palette.failure
         default: return .accentColor
         }
     }
 
     private var statusColor: Color {
         switch item.state {
-        case .error: return .red
-        case .done: return .green
+        case .error: return Palette.failure
+        case .done: return Palette.success
         default: return .secondary
         }
     }

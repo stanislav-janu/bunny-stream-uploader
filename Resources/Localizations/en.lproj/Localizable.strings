@@ -2,8 +2,6 @@
 "Settings" = "Settings";
 "Ready" = "Ready";
 "%lld concurrent" = "%lld concurrent";
-"No uploads" = "No uploads";
-"Drag a video file into the window above." = "Drag a video file into the window above.";
 
 /* Settings */
 "Bunny Stream credentials" = "Bunny Stream credentials";
@@ -96,3 +94,14 @@
 "Upload again from the start?" = "Upload again from the start?";
 "Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "Bunny has no part of this upload to continue from, so the whole file (%@) uploads again.";
 "Upload Again" = "Upload Again";
+
+/* Queue, keyboard, Upload menu */
+"Open…" = "Open…";
+"Upload" = "Upload";
+"Choose Videos" = "Choose Videos";
+"Choose Videos…" = "Choose Videos…";
+"No uploads yet" = "No uploads yet";
+"Drag videos into the window above, or choose them." = "Drag videos into the window above, or choose them.";
+"Cancel All" = "Cancel All";
+"Show in Finder" = "Show in Finder";
+"Position %lld in the queue" = "Position %lld in the queue";

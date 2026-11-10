@@ -29,10 +29,13 @@ rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 cp "$BIN_PATH" "$MACOS_DIR/$APP_NAME"
 
-# App ikona (Bunny logo)
-if [ -f "Resources/AppIcon.icns" ]; then
-    cp "Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
-fi
+# App icon: Assets.car (Liquid Glass) and AppIcon.icns (fallback), compiled from
+# Icon/AppIcon.icon by tools/make_icon.sh.
+for icon_file in Assets.car AppIcon.icns; do
+    if [ -f "Resources/$icon_file" ]; then
+        cp "Resources/$icon_file" "$RESOURCES_DIR/$icon_file"
+    fi
+done
 
 # Lokalizace (en, cs, hu, pl, de) do app bundle (Bundle.main najde .lproj)
 if [ -d "Resources/Localizations" ]; then
@@ -49,9 +52,10 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
     <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
     <key>CFBundleExecutable</key><string>$APP_NAME</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleVersion</key><string>1.0</string>
-    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleVersion</key><string>1.1</string>
+    <key>CFBundleShortVersionString</key><string>1.1</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleIconName</key><string>AppIcon</string>
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleLocalizations</key>
     <array>

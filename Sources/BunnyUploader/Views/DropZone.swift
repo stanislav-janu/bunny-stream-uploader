@@ -8,16 +8,16 @@ struct DropZone: View {
     let onDrop: ([URL]) -> Void
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
             .strokeBorder(
-                style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                style: StrokeStyle(lineWidth: Layout.dropBorderWidth, dash: Layout.dropBorderDash)
             )
-            .foregroundStyle(isTargeted ? Color.accentColor : Color.secondary.opacity(0.4))
+            .foregroundStyle(isTargeted ? Color.accentColor : Surface.dropBorder)
             .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
+                RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                    .fill(isTargeted ? Surface.dropTarget : Color.clear)
             )
-            .frame(height: 110)
+            .frame(height: Layout.dropZoneHeight)
             .overlay {
                 if hasCredentials {
                     readyContent
@@ -31,9 +31,9 @@ struct DropZone: View {
     }
 
     private var readyContent: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: Space.s) {
             Image(systemName: isTargeted ? "arrow.down.circle.fill" : "square.and.arrow.down")
-                .font(.system(size: 26))
+                .font(.system(size: Layout.dropSymbol))
             Text("Drop videos here")
                 .font(.callout)
         }
@@ -41,7 +41,7 @@ struct DropZone: View {
     }
 
     private var missingCredentialsContent: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Space.s) {
             Text("Add your Bunny credentials to start uploading.")
                 .font(.callout)
                 .foregroundStyle(.secondary)

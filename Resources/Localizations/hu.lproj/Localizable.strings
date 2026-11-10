@@ -2,8 +2,6 @@
 "Settings" = "Beállítások";
 "Ready" = "Kész";
 "%lld concurrent" = "%lld párhuzamos";
-"No uploads" = "Nincs feltöltés";
-"Drag a video file into the window above." = "Húzzon egy videófájlt a fenti ablakba.";
 "Bunny Stream credentials" = "Bunny Stream hitelesítő adatok";
 "Library ID" = "Library ID";
 "e.g. 123456" = "pl. 123456";
@@ -90,3 +88,14 @@
 "Upload again from the start?" = "Újrafeltöltés az elejétől?";
 "Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "A Bunnyban nincs olyan része ennek a feltöltésnek, amelyet folytatni lehetne, ezért a teljes fájl (%@) újra feltöltődik.";
 "Upload Again" = "Feltöltés újra";
+
+/* Queue, keyboard, Upload menu */
+"Open…" = "Megnyitás…";
+"Upload" = "Feltöltés";
+"Choose Videos" = "Videók kiválasztása";
+"Choose Videos…" = "Videók kiválasztása…";
+"No uploads yet" = "Még nincs feltöltés";
+"Drag videos into the window above, or choose them." = "Húzzon videókat a fenti ablakba, vagy válassza ki őket.";
+"Cancel All" = "Összes megszakítása";
+"Show in Finder" = "Megjelenítés a Finderben";
+"Position %lld in the queue" = "%lld. a sorban";

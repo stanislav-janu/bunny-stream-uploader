@@ -2,8 +2,6 @@
 "Settings" = "Nastavení";
 "Ready" = "Připraveno";
 "%lld concurrent" = "%lld souběžně";
-"No uploads" = "Žádné uploady";
-"Drag a video file into the window above." = "Přetáhni video soubor do okna výše.";
 
 /* Settings */
 "Bunny Stream credentials" = "Přihlašovací údaje Bunny Stream";
@@ -96,3 +94,14 @@
 "Upload again from the start?" = "Nahrát znovu od začátku?";
 "Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "V Bunny není žádná část tohoto uploadu, na kterou by šlo navázat, takže se celý soubor (%@) nahraje znovu.";
 "Upload Again" = "Nahrát znovu";
+
+/* Queue, keyboard, Upload menu */
+"Open…" = "Otevřít…";
+"Upload" = "Nahrát";
+"Choose Videos" = "Vybrat videa";
+"Choose Videos…" = "Vybrat videa…";
+"No uploads yet" = "Zatím žádné uploady";
+"Drag videos into the window above, or choose them." = "Přetáhni videa do okna výše, nebo je vyber.";
+"Cancel All" = "Zrušit vše";
+"Show in Finder" = "Zobrazit ve Finderu";
+"Position %lld in the queue" = "%lld. ve frontě";
