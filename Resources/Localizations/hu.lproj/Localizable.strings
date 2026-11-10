@@ -87,3 +87,6 @@
 "The saved collection no longer exists. New uploads go to the library without a collection." = "A mentett gyűjtemény már nem létezik. Az új feltöltések gyűjtemény nélkül kerülnek a könyvtárba.";
 "Click to copy the video ID: %@" = "Kattintson a videóazonosító másolásához: %@";
 "Copy Error Message" = "Hibaüzenet másolása";
+"Upload again from the start?" = "Újrafeltöltés az elejétől?";
+"Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "A Bunnyban nincs olyan része ennek a feltöltésnek, amelyet folytatni lehetne, ezért a teljes fájl (%@) újra feltöltődik.";
+"Upload Again" = "Feltöltés újra";

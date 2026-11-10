@@ -6,6 +6,8 @@ struct ContentView: View {
     @EnvironmentObject private var engine: UploadEngine
     @Environment(\.undoManager) private var undoManager
     @State private var isTargeted = false
+    /// A row whose Retry would upload the whole file again; the alert asks first.
+    @State private var restartCandidate: UploadItem?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,6 +27,25 @@ struct ContentView: View {
             } else {
                 uploadList
             }
+        }
+        .alert(
+            Text("Upload again from the start?"),
+            isPresented: Binding(
+                get: { restartCandidate != nil },
+                set: { shown in
+                    if !shown {
+                        restartCandidate = nil
+                    }
+                }
+            ),
+            presenting: restartCandidate
+        ) { item in
+            Button("Upload Again") {
+                engine.retry(item)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { item in
+            Text("Bunny has no part of this upload to continue from, so the whole file (\(Self.formatBytes(item.fileSize))) uploads again.")
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -101,14 +122,44 @@ struct ContentView: View {
                     UploadRowView(
                         item: item,
                         hasCredentials: engine.hasCredentials,
-                        onRemove: { engine.removeItem(item) },
+                        onRemove: { remove(item) },
                         onCancel: { engine.cancelUpload(item) },
-                        onRetry: { engine.retry(item) }
+                        onRetry: { askRetry(item) }
                     )
                 }
             }
             .padding(16)
         }
+    }
+
+    /// Retry continues or finishes without asking; only a full upload from the start is confirmed.
+    private func askRetry(_ item: UploadItem) {
+        Task {
+            if await engine.retryStartsOver(item) {
+                restartCandidate = item
+            } else {
+                engine.retry(item)
+            }
+        }
+    }
+
+    private static func formatBytes(_ bytes: Int64) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: bytes)
+    }
+
+    /// Removes one row; Command-Z puts it back. A video that never finished is deleted
+    /// in Bunny at once, so the restored row uploads into a new video on Retry.
+    private func remove(_ item: UploadItem) {
+        engine.removeItem(item)
+        let engine = engine
+        undoManager?.registerUndo(withTarget: engine) { target in
+            MainActor.assumeIsolated {
+                target.reinsert([item])
+            }
+        }
+        undoManager?.setActionName(String(localized: "Remove"))
     }
 
     private func clearFinished() {

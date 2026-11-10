@@ -41,7 +41,8 @@ One name per thing, used the same way in buttons, menus, tooltips, errors, and a
 | --- | --- | --- |
 | Upload to Bunny | Start an upload from Finder | send, share, import |
 | Cancel | Stop a running upload and delete its unfinished video in Bunny | abort, stop |
-| Retry | Upload a failed, cancelled, or interrupted file again (into the same video when it still exists) | restart, redo, try again |
+| Retry | Upload a failed, cancelled, or interrupted file again: continue from saved parts, or finish at once when Bunny already has the video | restart, redo, try again |
+| Upload Again | Confirm a Retry that has to upload the whole file from the start | restart, start over |
 | Remove | Take an upload off the list; a done video stays in Bunny, an unfinished one is deleted there | delete, clear, dismiss |
 | Clear Finished | Remove every done row at once | clean up, purge, clear all |
 | Copy ID | Put the video ID on the pasteboard (click the ID, or the context menu) | copy GUID, copy key |

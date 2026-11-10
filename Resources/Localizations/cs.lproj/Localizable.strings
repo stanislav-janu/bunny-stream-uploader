@@ -93,3 +93,6 @@
 "The saved collection no longer exists. New uploads go to the library without a collection." = "Uložená kolekce už neexistuje. Nové uploady půjdou do knihovny bez kolekce.";
 "Click to copy the video ID: %@" = "Kliknutím zkopíruješ ID videa: %@";
 "Copy Error Message" = "Kopírovat chybovou zprávu";
+"Upload again from the start?" = "Nahrát znovu od začátku?";
+"Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "V Bunny není žádná část tohoto uploadu, na kterou by šlo navázat, takže se celý soubor (%@) nahraje znovu.";
+"Upload Again" = "Nahrát znovu";

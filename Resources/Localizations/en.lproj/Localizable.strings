@@ -93,3 +93,6 @@
 "The saved collection no longer exists. New uploads go to the library without a collection." = "The saved collection no longer exists. New uploads go to the library without a collection.";
 "Click to copy the video ID: %@" = "Click to copy the video ID: %@";
 "Copy Error Message" = "Copy Error Message";
+"Upload again from the start?" = "Upload again from the start?";
+"Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "Bunny has no part of this upload to continue from, so the whole file (%@) uploads again.";
+"Upload Again" = "Upload Again";

@@ -87,3 +87,6 @@
 "The saved collection no longer exists. New uploads go to the library without a collection." = "Zapisana kolekcja już nie istnieje. Nowe przesyłania trafią do biblioteki bez kolekcji.";
 "Click to copy the video ID: %@" = "Kliknij, aby skopiować ID filmu: %@";
 "Copy Error Message" = "Kopiuj komunikat o błędzie";
+"Upload again from the start?" = "Przesłać ponownie od początku?";
+"Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "W Bunny nie ma żadnej części tego przesyłania, od której można kontynuować, więc cały plik (%@) zostanie przesłany ponownie.";
+"Upload Again" = "Prześlij ponownie";

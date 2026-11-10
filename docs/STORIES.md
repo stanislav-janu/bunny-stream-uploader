@@ -110,6 +110,7 @@ Acceptance:
 - [unit] Retry of a failed or interrupted row reuses its video ID, so Bunny gets no duplicate video; a cancelled row has none (S-014) and gets a new one.
 - [unit] Retry of a file that no longer exists shows "File not found" instead of starting.
 - [unit] Retry of a row whose video Bunny already has (status 1 or higher) marks it Done without uploading; a video that is gone (404) is replaced by a new one.
+- [unit] Retry asks first when it would upload the whole file from the start (no saved parts, a changed file, a video gone from Bunny, a cancelled row): alert "Upload again from the start?" with "Upload Again" and "Cancel". Continuing from saved parts and finishing a video Bunny already has do not ask.
 - [snap] A failed row's error text can be selected, and the context menu has "Copy Error Message".
 UX:
 - Flow: failed, cancelled, or interrupted row -> Retry button, context menu Retry, or Command-R -> same row goes back to "Uploading" at 0 % (or the resumed offset after S-013); Cancel undoes it
@@ -127,14 +128,14 @@ Acceptance:
 - [unit] Finished rows (name, size, state, video ID, finish date) are saved to Application Support and loaded on launch.
 - [unit] A row that was active at quit loads as "Interrupted" with Retry (until S-013 resumes it).
 - [snap] "Clear Finished" removes done rows from the list and from the saved file.
+- [manual] Command-Z brings back rows removed with Clear Finished or with Remove on one row; an unfinished row's video was already deleted in Bunny, so Retry uploads it into a new one.
 UX:
 - Flow: quit -> reopen -> list shows earlier uploads, newest on top, with finish time; Clear Finished in the toolbar or Upload menu (S-021) removes done rows; Command-Z brings them back
 - Surface: inline in the main list (a place people come back to, no separate History page in version one)
 - States: empty list: "No uploads yet" with "Choose Videos…" (S-018); interrupted rows on launch: "Interrupted" with Retry; many rows: list scrolls, long file names truncate in the middle with the full name in a tooltip
 - Words: "Clear Finished" (toolbar button with text, disabled when nothing is done); "Undo Clear Finished"; "Interrupted"; time as relative date ("Today 14:32")
 - Access: Clear Finished has a text label and VoiceOver hint "Removes done uploads from the list"
-Note: [unit] lines pass; [snap] and [manual] lines need a check in the running app.
-Status: doing
+Status: done
 
 ## M2 Reliability: big files finish without babysitting
 

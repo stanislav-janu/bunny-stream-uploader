@@ -312,6 +312,33 @@ public final class UploadEngine: ObservableObject {
         saveHistory()
     }
 
+    /// Whether Retry would upload the whole file again: no saved parts to continue from,
+    /// a changed file, or a video Bunny no longer has. Retry of a video Bunny already took
+    /// over, or of saved parts of an unchanged file, does not start over. The UI asks first.
+    public func retryStartsOver(_ item: UploadItem) async -> Bool {
+        guard item.state.canRetry, item.fileExists else { return false }
+        var videoExists = false
+        if let videoId = item.videoId, item.libraryId == credentials.libraryId {
+            let client = BunnyAPIClient(credentials: credentials, session: apiSession)
+            do {
+                let status = try await client.getVideoStatus(guid: videoId)
+                if status >= 1 {
+                    return false
+                }
+                videoExists = true
+            } catch BunnyAPIClient.APIError.http(404, _) {
+                return true
+            } catch {
+                // Unknown (network): judge by what is saved.
+                videoExists = true
+            }
+        }
+        guard videoExists, let saved = item.resume, saved.isValid, !saved.partURLs.isEmpty else {
+            return true
+        }
+        return !saved.matches(fileSize: item.fileSize, fileModified: item.fileModified)
+    }
+
     /// Uploads a failed, cancelled, or interrupted file again, into the same
     /// Bunny video when one was already created in the current library.
     public func retry(_ item: UploadItem) {

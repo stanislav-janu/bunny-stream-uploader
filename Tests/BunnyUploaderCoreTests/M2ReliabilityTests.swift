@@ -386,6 +386,59 @@ final class M2ReliabilityTests: XCTestCase {
     }
 
     @MainActor
+    func testRetryStartsOverDecision() async throws {
+        let fake = FakeTUS()
+        let engine = makeEngine(fake)
+        MockURLProtocol.handler = { request in
+            let url = request.url!.absoluteString
+            if url.hasSuffix("/taken") {
+                return (200, Data(#"{"status":2}"#.utf8), [:])
+            }
+            if url.hasSuffix("/gone") {
+                return (404, Data(), [:])
+            }
+            return (200, Data(#"{"status":0}"#.utf8), [:])
+        }
+        let size = 60 * 1024 * 1024
+        let file = makeFile(size: size)
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        func row(_ videoId: String?, resume: ResumeState? = nil, state: UploadState = .error("x"), url: URL? = nil) -> UploadItem {
+            let item = UploadItem(fileURL: url ?? file, fileName: "a.mp4", fileSize: Int64(size), mimeType: "video/mp4")
+            item.videoId = videoId
+            item.libraryId = "1"
+            item.resume = resume
+            item.state = state
+            return item
+        }
+        let matching = ResumeState(
+            partCount: 4,
+            fileSize: Int64(size),
+            fileModified: row(nil).fileModified,
+            parts: [0: "https://video.bunnycdn.com/tusupload/p"]
+        )
+        var changed = matching
+        changed.fileSize += 1
+
+        let taken = await engine.retryStartsOver(row("taken"))
+        XCTAssertFalse(taken, "Bunny has it: finishes without uploading")
+        let resumable = await engine.retryStartsOver(row("waiting", resume: matching))
+        XCTAssertFalse(resumable, "saved parts of the same file: continues")
+        let gone = await engine.retryStartsOver(row("gone", resume: matching))
+        XCTAssertTrue(gone, "video deleted in Bunny")
+        let cancelled = await engine.retryStartsOver(row(nil, state: .cancelled))
+        XCTAssertTrue(cancelled, "Cancel deleted the video")
+        let fileChanged = await engine.retryStartsOver(row("waiting", resume: changed))
+        XCTAssertTrue(fileChanged, "file changed since the parts were saved")
+        let nothingSaved = await engine.retryStartsOver(row("waiting"))
+        XCTAssertTrue(nothingSaved, "no saved parts")
+        let done = await engine.retryStartsOver(row("taken", state: .done))
+        XCTAssertFalse(done, "a done row has no Retry")
+        let missing = await engine.retryStartsOver(row(nil, url: URL(fileURLWithPath: "/nonexistent/\(UUID().uuidString).mp4")))
+        XCTAssertFalse(missing, "a missing file shows its own error instead")
+    }
+
+    @MainActor
     func testInvalidSavedSplitStartsOver() async throws {
         let fake = FakeTUS()
         let size = 60 * 1024 * 1024

@@ -337,6 +337,24 @@ final class M1FeatureTests: XCTestCase {
         XCTAssertEqual(store.load().count, 2)
     }
 
+    func testRemovedRowComesBack() {
+        let store = tempHistory()
+        let engine = makeEngine(history: store)
+        let done = UploadItem(fileURL: URL(fileURLWithPath: "/tmp/a.mp4"), fileName: "a.mp4", fileSize: 1, mimeType: "video/mp4")
+        done.state = .done
+        done.videoId = "kept"
+        done.finishedAt = Date()
+        engine.reinsert([done])
+        engine.removeItem(done)
+        XCTAssertTrue(engine.items.isEmpty)
+        XCTAssertTrue(store.load().isEmpty)
+
+        // What Command-Z does after Remove.
+        engine.reinsert([done])
+        XCTAssertEqual(engine.items.first?.videoId, "kept")
+        XCTAssertEqual(store.load().first?.videoId, "kept")
+    }
+
     func testNewestUploadIsOnTop() {
         MockURLProtocol.handler = { _ in (500, Data(), [:]) }
         let engine = makeEngine()

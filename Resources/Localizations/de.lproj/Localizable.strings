@@ -87,3 +87,6 @@
 "The saved collection no longer exists. New uploads go to the library without a collection." = "Die gespeicherte Sammlung gibt es nicht mehr. Neue Uploads landen ohne Sammlung in der Bibliothek.";
 "Click to copy the video ID: %@" = "Klicken, um die Video-ID zu kopieren: %@";
 "Copy Error Message" = "Fehlermeldung kopieren";
+"Upload again from the start?" = "Von vorn neu hochladen?";
+"Bunny has no part of this upload to continue from, so the whole file (%@) uploads again." = "Bunny hat keinen Teil dieses Uploads, an den sich anknüpfen lässt. Die ganze Datei (%@) wird erneut hochgeladen.";
+"Upload Again" = "Erneut hochladen";
