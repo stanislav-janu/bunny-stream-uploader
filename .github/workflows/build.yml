@@ -9,7 +9,7 @@ on:
 env:
   # Thin integration layers (Keychain, TUSKit wrapper) need a real system and are
   # excluded from the coverage gate; all custom logic is covered.
-  COVERAGE_IGNORE: 'Tests/|\.build/|KeychainStore|TUSUploader\.swift'
+  COVERAGE_IGNORE: 'Tests/|\.build/|KeychainStore|/TUSUploader\.swift'
   COVERAGE_MIN: '80'
 
 jobs:
