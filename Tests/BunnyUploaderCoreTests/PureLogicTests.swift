@@ -110,7 +110,8 @@ final class UploadStateTests: XCTestCase {
         XCTAssertFalse(UploadState.processing.label.isEmpty)
         XCTAssertFalse(UploadState.done.label.isEmpty)
         XCTAssertFalse(UploadState.cancelled.label.isEmpty)
-        XCTAssertTrue(UploadState.error("boom").label.contains("boom"))
+        XCTAssertFalse(UploadState.error("boom").label.isEmpty)
+        XCTAssertEqual(UploadState.error("boom").errorMessage, "boom")
     }
 
     func testIsTerminal() {

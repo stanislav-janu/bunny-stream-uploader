@@ -1,13 +1,9 @@
 /* Bunny Stream Uploader — hu */
 "Settings" = "Beállítások";
 "Ready" = "Kész";
-"Missing credentials. Open Settings (⌘,)" = "Hiányzó hitelesítő adatok. Beállítások megnyitása (⌘,)";
 "%lld concurrent" = "%lld párhuzamos";
 "No uploads" = "Nincs feltöltés";
 "Drag a video file into the window above." = "Húzzon egy videófájlt a fenti ablakba.";
-"Drop a video here" = "Húzzon ide egy videót";
-"Cancel upload" = "Feltöltés megszakítása";
-"Remove from list" = "Eltávolítás a listából";
 "Bunny Stream credentials" = "Bunny Stream hitelesítő adatok";
 "Library ID" = "Library ID";
 "e.g. 123456" = "pl. 123456";
@@ -27,7 +23,6 @@
 "Bunny processing" = "Bunny feldolgozás";
 "Done" = "Kész";
 "Cancelled" = "Megszakítva";
-"Error: %@" = "Hiba: %@";
 "Unexpected server response" = "Váratlan kiszolgálóválasz";
 "Bunny did not return a videoId (guid)" = "A Bunny nem adott vissza videoId-t (guid)";
 "Could not open file: %@" = "Nem sikerült megnyitni a fájlt: %@";
@@ -42,3 +37,33 @@
 /* Notifications */
 "Upload complete" = "Feltöltés kész";
 "Upload failed" = "Feltöltés sikertelen";
+
+/* Credentials check, row actions, saved list */
+"Drop videos here" = "Húzzon ide videókat";
+"Add your Bunny credentials to start uploading." = "A feltöltéshez adja meg a Bunny hitelesítő adatait.";
+"Open Settings…" = "Beállítások megnyitása…";
+"Open Settings (⌘,)" = "Beállítások megnyitása (⌘,)";
+"Credentials missing" = "Hiányzó hitelesítő adatok";
+"Clear Finished" = "Befejezettek törlése";
+"Remove done uploads from the list. The videos stay in Bunny." = "Eltávolítja a kész feltöltéseket a listából. A videók a Bunnyban maradnak.";
+"Removes done uploads from the list" = "Eltávolítja a kész feltöltéseket a listából";
+"Cancel" = "Mégse";
+"Retry" = "Újra";
+"Upload this file again into the same video" = "A fájl újbóli feltöltése ugyanabba a videóba";
+"Remove" = "Eltávolítás";
+"Remove from the list. The video stays in Bunny." = "Eltávolítás a listából. A videó a Bunnyban marad.";
+"Video ID" = "Videóazonosító";
+"Copy ID" = "Azonosító másolása";
+"Copied" = "Másolva";
+"Copy the video ID to the clipboard" = "A videóazonosító másolása a vágólapra";
+"Copy Embed Link" = "Beágyazási link másolása";
+"Checking…" = "Ellenőrzés…";
+"Interrupted" = "Megszakadt";
+"Failed" = "Sikertelen";
+"The file was moved or deleted. Drop it again to upload." = "A fájlt áthelyezték vagy törölték. A feltöltéshez húzza be újra.";
+"Bunny rejected this API key. Copy the Stream API key from the library's API page." = "A Bunny elutasította ezt az API-kulcsot. Másolja ki a Stream API-kulcsot a könyvtár API oldaláról.";
+"No library with this ID. Check the Library ID in the Bunny dashboard." = "Nincs ilyen azonosítójú könyvtár. Ellenőrizze a Library ID-t a Bunny vezérlőpultján.";
+"Unable to reach Bunny. Check your connection and try again." = "A Bunny nem érhető el. Ellenőrizze a kapcsolatot, és próbálja újra.";
+"Bunny answered with HTTP %lld. Try again later." = "A Bunny HTTP %lld kóddal válaszolt. Próbálja újra később.";
+"Cancel this upload and delete the unfinished video in Bunny" = "Megszakítja a feltöltést, és törli a befejezetlen videót a Bunnyban";
+"Remove from the list and delete the unfinished video in Bunny" = "Eltávolítja a listából, és törli a befejezetlen videót a Bunnyban";

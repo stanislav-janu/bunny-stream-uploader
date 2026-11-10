@@ -4,14 +4,14 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var engine: UploadEngine
+    @Environment(\.undoManager) private var undoManager
     @State private var isTargeted = false
-    @State private var showSettings = false
 
     var body: some View {
         VStack(spacing: 0) {
             header
 
-            DropZone(isTargeted: $isTargeted) { urls in
+            DropZone(isTargeted: $isTargeted, hasCredentials: engine.hasCredentials) { urls in
                 for url in urls {
                     engine.addFile(url)
                 }
@@ -28,9 +28,18 @@ struct ContentView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
+                Button("Clear Finished") {
+                    clearFinished()
+                }
+                .disabled(!engine.hasFinished)
+                .help("Remove done uploads from the list. The videos stay in Bunny.")
+                .accessibilityHint(Text("Removes done uploads from the list"))
+            }
+            ToolbarItem(placement: .primaryAction) {
                 SettingsLink {
                     Label("Settings", systemImage: "gearshape")
                 }
+                .help("Open Settings (⌘,)")
             }
         }
     }
@@ -43,9 +52,15 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Bunny Stream Uploader")
                     .font(.headline)
-                Text(engine.hasCredentials ? "Ready" : "Missing credentials. Open Settings (⌘,)")
-                    .font(.caption)
-                    .foregroundStyle(engine.hasCredentials ? Color.secondary : Color.red)
+                if engine.hasCredentials {
+                    Text("Ready")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Label("Credentials missing", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
             }
             Spacer()
             if engine.activeCount > 0 {
@@ -85,12 +100,26 @@ struct ContentView: View {
                 ForEach(engine.items) { item in
                     UploadRowView(
                         item: item,
+                        hasCredentials: engine.hasCredentials,
                         onRemove: { engine.removeItem(item) },
-                        onCancel: { engine.cancelUpload(item) }
+                        onCancel: { engine.cancelUpload(item) },
+                        onRetry: { engine.retry(item) }
                     )
                 }
             }
             .padding(16)
         }
+    }
+
+    private func clearFinished() {
+        let removed = engine.clearFinished()
+        guard !removed.isEmpty else { return }
+        let engine = engine
+        undoManager?.registerUndo(withTarget: engine) { target in
+            MainActor.assumeIsolated {
+                target.reinsert(removed)
+            }
+        }
+        undoManager?.setActionName(String(localized: "Clear Finished"))
     }
 }

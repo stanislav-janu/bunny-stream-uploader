@@ -1,9 +1,10 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Drag-and-drop zone for video files.
+/// Drag-and-drop zone for video files. Without credentials it asks for them instead.
 struct DropZone: View {
     @Binding var isTargeted: Bool
+    let hasCredentials: Bool
     let onDrop: ([URL]) -> Void
 
     var body: some View {
@@ -18,17 +19,37 @@ struct DropZone: View {
             )
             .frame(height: 110)
             .overlay {
-                VStack(spacing: 6) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 26))
-                    Text("Drop a video here")
-                        .font(.callout)
+                if hasCredentials {
+                    readyContent
+                } else {
+                    missingCredentialsContent
                 }
-                .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
             }
             .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
                 handleDrop(providers)
             }
+    }
+
+    private var readyContent: some View {
+        VStack(spacing: 6) {
+            Image(systemName: isTargeted ? "arrow.down.circle.fill" : "square.and.arrow.down")
+                .font(.system(size: 26))
+            Text("Drop videos here")
+                .font(.callout)
+        }
+        .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
+    }
+
+    private var missingCredentialsContent: some View {
+        VStack(spacing: 8) {
+            Text("Add your Bunny credentials to start uploading.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            SettingsLink {
+                Text("Open Settings…")
+            }
+            .buttonStyle(.borderedProminent)
+        }
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {

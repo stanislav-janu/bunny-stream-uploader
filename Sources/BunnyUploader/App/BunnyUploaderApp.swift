@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @main
 struct BunnyUploaderApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var engine = UploadEngine()
+    @StateObject private var engine = UploadEngine(history: .standard())
 
     var body: some Scene {
         Window("Bunny Stream Uploader", id: "main") {

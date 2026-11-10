@@ -7,6 +7,8 @@ struct SettingsView: View {
     @State private var apiKey: String = ""
     @State private var libraryId: String = ""
     @State private var savedNote = false
+    @State private var isChecking = false
+    @State private var checkError: BunnyAPIClient.CredentialCheckError?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -21,6 +23,9 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                     TextField("e.g. 123456", text: $libraryId)
                         .textFieldStyle(.roundedBorder)
+                    if checkError == .libraryNotFound {
+                        errorText
+                    }
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -29,6 +34,9 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                     SecureField("Paste API key", text: $apiKey)
                         .textFieldStyle(.roundedBorder)
+                    if checkError == .keyRejected {
+                        errorText
+                    }
                 }
 
                 Text("Stored securely in Keychain. The key is never shown or logged.")
@@ -72,17 +80,25 @@ struct SettingsView: View {
 
             // MARK: Save
             HStack {
-                if savedNote {
+                if isChecking {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Checking…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if savedNote {
                     Label("Saved", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(.green)
                         .font(.caption)
+                } else if let checkError, checkError != .keyRejected, checkError != .libraryNotFound {
+                    errorText
                 }
                 Spacer()
                 Button("Save") {
-                    engine.saveCredentials(Credentials(apiKey: apiKey, libraryId: libraryId))
-                    savedNote = true
+                    save()
                 }
                 .keyboardShortcut(.defaultAction)
+                .disabled(isChecking || apiKey.isEmpty || libraryId.isEmpty)
             }
         }
         .padding(24)
@@ -90,6 +106,44 @@ struct SettingsView: View {
         .onAppear {
             apiKey = engine.credentials.apiKey
             libraryId = engine.credentials.libraryId
+        }
+        .onChange(of: apiKey) {
+            clearResult()
+        }
+        .onChange(of: libraryId) {
+            clearResult()
+        }
+    }
+
+    @ViewBuilder
+    private var errorText: some View {
+        if let checkError {
+            Label(checkError.message, systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func clearResult() {
+        savedNote = false
+        checkError = nil
+    }
+
+    private func save() {
+        let new = Credentials(
+            apiKey: apiKey.trimmingCharacters(in: .whitespacesAndNewlines),
+            libraryId: libraryId.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        isChecking = true
+        clearResult()
+        Task {
+            let error = await engine.checkAndSaveCredentials(new)
+            isChecking = false
+            checkError = error
+            savedNote = error == nil
+            let announcement = error?.message ?? String(localized: "Saved")
+            AccessibilityNotification.Announcement(announcement).post()
         }
     }
 }

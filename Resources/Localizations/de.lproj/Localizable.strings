@@ -1,13 +1,9 @@
 /* Bunny Stream Uploader — de */
 "Settings" = "Einstellungen";
 "Ready" = "Bereit";
-"Missing credentials. Open Settings (⌘,)" = "Anmeldedaten fehlen. Einstellungen öffnen (⌘,)";
 "%lld concurrent" = "%lld gleichzeitig";
 "No uploads" = "Keine Uploads";
 "Drag a video file into the window above." = "Ziehe eine Videodatei in das Fenster oben.";
-"Drop a video here" = "Video hier ablegen";
-"Cancel upload" = "Upload abbrechen";
-"Remove from list" = "Aus Liste entfernen";
 "Bunny Stream credentials" = "Bunny Stream Anmeldedaten";
 "Library ID" = "Library ID";
 "e.g. 123456" = "z. B. 123456";
@@ -27,7 +23,6 @@
 "Bunny processing" = "Bunny verarbeitet";
 "Done" = "Fertig";
 "Cancelled" = "Abgebrochen";
-"Error: %@" = "Fehler: %@";
 "Unexpected server response" = "Unerwartete Serverantwort";
 "Bunny did not return a videoId (guid)" = "Bunny hat keine videoId (guid) zurückgegeben";
 "Could not open file: %@" = "Datei konnte nicht geöffnet werden: %@";
@@ -42,3 +37,33 @@
 /* Notifications */
 "Upload complete" = "Upload abgeschlossen";
 "Upload failed" = "Upload fehlgeschlagen";
+
+/* Credentials check, row actions, saved list */
+"Drop videos here" = "Videos hier ablegen";
+"Add your Bunny credentials to start uploading." = "Füge deine Bunny-Anmeldedaten hinzu, um mit dem Upload zu beginnen.";
+"Open Settings…" = "Einstellungen öffnen …";
+"Open Settings (⌘,)" = "Einstellungen öffnen (⌘,)";
+"Credentials missing" = "Anmeldedaten fehlen";
+"Clear Finished" = "Fertige Uploads entfernen";
+"Remove done uploads from the list. The videos stay in Bunny." = "Entfernt fertige Uploads aus der Liste. Die Videos bleiben in Bunny.";
+"Removes done uploads from the list" = "Entfernt fertige Uploads aus der Liste";
+"Cancel" = "Abbrechen";
+"Retry" = "Erneut versuchen";
+"Upload this file again into the same video" = "Lädt die Datei erneut in dasselbe Video hoch";
+"Remove" = "Entfernen";
+"Remove from the list. The video stays in Bunny." = "Entfernt den Upload aus der Liste. Das Video bleibt in Bunny.";
+"Video ID" = "Video-ID";
+"Copy ID" = "ID kopieren";
+"Copied" = "Kopiert";
+"Copy the video ID to the clipboard" = "Kopiert die Video-ID in die Zwischenablage";
+"Copy Embed Link" = "Einbettungslink kopieren";
+"Checking…" = "Wird geprüft …";
+"Interrupted" = "Unterbrochen";
+"Failed" = "Fehlgeschlagen";
+"The file was moved or deleted. Drop it again to upload." = "Die Datei wurde verschoben oder gelöscht. Lege sie erneut ab, um sie hochzuladen.";
+"Bunny rejected this API key. Copy the Stream API key from the library's API page." = "Bunny hat diesen API-Schlüssel abgelehnt. Kopiere den Stream-API-Schlüssel von der API-Seite der Bibliothek.";
+"No library with this ID. Check the Library ID in the Bunny dashboard." = "Keine Bibliothek mit dieser ID. Prüfe die Library ID im Bunny-Dashboard.";
+"Unable to reach Bunny. Check your connection and try again." = "Bunny ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.";
+"Bunny answered with HTTP %lld. Try again later." = "Bunny hat mit HTTP %lld geantwortet. Versuche es später erneut.";
+"Cancel this upload and delete the unfinished video in Bunny" = "Bricht den Upload ab und löscht das unfertige Video in Bunny";
+"Remove from the list and delete the unfinished video in Bunny" = "Entfernt den Upload aus der Liste und löscht das unfertige Video in Bunny";

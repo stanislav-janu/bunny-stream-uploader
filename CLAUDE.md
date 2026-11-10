@@ -28,6 +28,7 @@ Two SwiftPM targets: `BunnyUploaderCore` (testable logic library) and `BunnyUplo
 - `Bunny/` — `BunnyAPIClient` (Create/Get Video, injectable session), `Signature` (`SHA256(libraryId+apiKey+expiration+videoId)`).
 - `Keychain/KeychainStore` — credentials in one keychain item.
 - `Models/UploadItem` — upload item and `UploadState`.
+- `Models/UploadHistoryStore`: upload list saved as JSON in `~/Library/Application Support/BunnyUploader/uploads.json`; rows that were running load as `interrupted`. `UploadEngine(history: nil)` (the test default) keeps the list in memory only.
 
 `Resources/Localizations/*.lproj` — en (base), cs, hu, pl, de.
 

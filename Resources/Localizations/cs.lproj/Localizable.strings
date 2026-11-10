@@ -1,13 +1,9 @@
 /* Window and main UI */
 "Settings" = "Nastavení";
 "Ready" = "Připraveno";
-"Missing credentials. Open Settings (⌘,)" = "Chybí přihlašovací údaje. Otevři Nastavení (⌘,)";
 "%lld concurrent" = "%lld souběžně";
 "No uploads" = "Žádné uploady";
 "Drag a video file into the window above." = "Přetáhni video soubor do okna výše.";
-"Drop a video here" = "Přetáhni sem video";
-"Cancel upload" = "Zrušit upload";
-"Remove from list" = "Odebrat ze seznamu";
 
 /* Settings */
 "Bunny Stream credentials" = "Přihlašovací údaje Bunny Stream";
@@ -31,7 +27,6 @@
 "Bunny processing" = "Zpracovává Bunny";
 "Done" = "Hotovo";
 "Cancelled" = "Zrušeno";
-"Error: %@" = "Chyba: %@";
 
 /* Errors */
 "Unexpected server response" = "Nečekaná odpověď serveru";
@@ -48,3 +43,33 @@
 /* Notifications */
 "Upload complete" = "Upload dokončen";
 "Upload failed" = "Upload selhal";
+
+/* Credentials check, row actions, saved list */
+"Drop videos here" = "Přetáhni sem videa";
+"Add your Bunny credentials to start uploading." = "Pro nahrávání přidej přihlašovací údaje Bunny.";
+"Open Settings…" = "Otevřít Nastavení…";
+"Open Settings (⌘,)" = "Otevřít Nastavení (⌘,)";
+"Credentials missing" = "Chybí přihlašovací údaje";
+"Clear Finished" = "Odebrat hotové";
+"Remove done uploads from the list. The videos stay in Bunny." = "Odebere hotové uploady ze seznamu. Videa v Bunny zůstanou.";
+"Removes done uploads from the list" = "Odebere hotové uploady ze seznamu";
+"Cancel" = "Zrušit";
+"Retry" = "Zkusit znovu";
+"Upload this file again into the same video" = "Nahraje soubor znovu do stejného videa";
+"Remove" = "Odebrat";
+"Remove from the list. The video stays in Bunny." = "Odebere upload ze seznamu. Video v Bunny zůstane.";
+"Video ID" = "ID videa";
+"Copy ID" = "Kopírovat ID";
+"Copied" = "Zkopírováno";
+"Copy the video ID to the clipboard" = "Zkopíruje ID videa do schránky";
+"Copy Embed Link" = "Kopírovat odkaz pro vložení";
+"Checking…" = "Ověřuje se…";
+"Interrupted" = "Přerušeno";
+"Failed" = "Selhalo";
+"The file was moved or deleted. Drop it again to upload." = "Soubor byl přesunut nebo smazán. Přetáhni ho znovu.";
+"Bunny rejected this API key. Copy the Stream API key from the library's API page." = "Bunny tento API klíč odmítl. Zkopíruj Stream API klíč ze stránky API dané knihovny.";
+"No library with this ID. Check the Library ID in the Bunny dashboard." = "Knihovna s tímto ID neexistuje. Zkontroluj Library ID v administraci Bunny.";
+"Unable to reach Bunny. Check your connection and try again." = "Bunny není dostupný. Zkontroluj připojení a zkus to znovu.";
+"Bunny answered with HTTP %lld. Try again later." = "Bunny vrátil chybu HTTP %lld. Zkus to později.";
+"Cancel this upload and delete the unfinished video in Bunny" = "Zruší upload a smaže nedokončené video v Bunny";
+"Remove from the list and delete the unfinished video in Bunny" = "Odebere upload ze seznamu a smaže nedokončené video v Bunny";

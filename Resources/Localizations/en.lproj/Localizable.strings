@@ -1,13 +1,9 @@
 /* Window and main UI */
 "Settings" = "Settings";
 "Ready" = "Ready";
-"Missing credentials. Open Settings (⌘,)" = "Missing credentials. Open Settings (⌘,)";
 "%lld concurrent" = "%lld concurrent";
 "No uploads" = "No uploads";
 "Drag a video file into the window above." = "Drag a video file into the window above.";
-"Drop a video here" = "Drop a video here";
-"Cancel upload" = "Cancel upload";
-"Remove from list" = "Remove from list";
 
 /* Settings */
 "Bunny Stream credentials" = "Bunny Stream credentials";
@@ -31,7 +27,6 @@
 "Bunny processing" = "Bunny processing";
 "Done" = "Done";
 "Cancelled" = "Cancelled";
-"Error: %@" = "Error: %@";
 
 /* Errors */
 "Unexpected server response" = "Unexpected server response";
@@ -48,3 +43,33 @@
 /* Notifications */
 "Upload complete" = "Upload complete";
 "Upload failed" = "Upload failed";
+
+/* Credentials check, row actions, saved list */
+"Drop videos here" = "Drop videos here";
+"Add your Bunny credentials to start uploading." = "Add your Bunny credentials to start uploading.";
+"Open Settings…" = "Open Settings…";
+"Open Settings (⌘,)" = "Open Settings (⌘,)";
+"Credentials missing" = "Credentials missing";
+"Clear Finished" = "Clear Finished";
+"Remove done uploads from the list. The videos stay in Bunny." = "Remove done uploads from the list. The videos stay in Bunny.";
+"Removes done uploads from the list" = "Removes done uploads from the list";
+"Cancel" = "Cancel";
+"Retry" = "Retry";
+"Upload this file again into the same video" = "Upload this file again into the same video";
+"Remove" = "Remove";
+"Remove from the list. The video stays in Bunny." = "Remove from the list. The video stays in Bunny.";
+"Video ID" = "Video ID";
+"Copy ID" = "Copy ID";
+"Copied" = "Copied";
+"Copy the video ID to the clipboard" = "Copy the video ID to the clipboard";
+"Copy Embed Link" = "Copy Embed Link";
+"Checking…" = "Checking…";
+"Interrupted" = "Interrupted";
+"Failed" = "Failed";
+"The file was moved or deleted. Drop it again to upload." = "The file was moved or deleted. Drop it again to upload.";
+"Bunny rejected this API key. Copy the Stream API key from the library's API page." = "Bunny rejected this API key. Copy the Stream API key from the library's API page.";
+"No library with this ID. Check the Library ID in the Bunny dashboard." = "No library with this ID. Check the Library ID in the Bunny dashboard.";
+"Unable to reach Bunny. Check your connection and try again." = "Unable to reach Bunny. Check your connection and try again.";
+"Bunny answered with HTTP %lld. Try again later." = "Bunny answered with HTTP %lld. Try again later.";
+"Cancel this upload and delete the unfinished video in Bunny" = "Cancel this upload and delete the unfinished video in Bunny";
+"Remove from the list and delete the unfinished video in Bunny" = "Remove from the list and delete the unfinished video in Bunny";
