@@ -67,3 +67,10 @@
 "Bunny answered with HTTP %lld. Try again later." = "A Bunny HTTP %lld kóddal válaszolt. Próbálja újra később.";
 "Cancel this upload and delete the unfinished video in Bunny" = "Megszakítja a feltöltést, és törli a befejezetlen videót a Bunnyban";
 "Remove from the list and delete the unfinished video in Bunny" = "Eltávolítja a listából, és törli a befejezetlen videót a Bunnyban";
+
+/* Reliability: signature, quit confirmation */
+"Bunny rejected the signature" = "A Bunny elutasította az aláírást";
+"Quit while uploading?" = "Kilép feltöltés közben?";
+"Uploads still running: %lld. If you quit now, they stop and you can retry them after the next launch." = "Futó feltöltések: %lld. Ha most kilép, leállnak, és a következő indítás után újrapróbálhatja őket.";
+"Keep Uploading" = "Feltöltés folytatása";
+"Quit" = "Kilépés";

@@ -55,3 +55,35 @@ This can be overridden with a manual count (1 to 64) in Settings.
 ## Single stream and resume
 
 Small files and the fallback path use TUSKit, which handles resume and offset persistence. Its chunk size is raised to 64 MB, since the 512 kB default throttles throughput due to a round-trip after every chunk.
+
+## Resilience
+
+- Every part request (`POST partial`, `PATCH`, `HEAD`) and the final `POST` retries after a network error or HTTP 408, 409, 423, 429, or 5xx, waiting 0, 3, 5, 10, 20, and 60 s (`ParallelTUSUploader.defaultRetryDelays`). When the waits run out, the upload fails.
+- Before a `PATCH` is retried, the part asks Bunny for its `Upload-Offset` with `HEAD` and continues from there. A block Bunny stored while the client saw an error is not sent again, and progress does not count it twice.
+- Bunny keeps a part locked (HTTP 423) for about 3 s after a `PATCH` to it was aborted; the retry waits cover that.
+- On HTTP 401 the uploader asks `UploadEngine.signer` for a fresh signature for the same `videoId` and repeats the request. Bunny answers 401 per part, so each part renews once. A second 401 right after renewing fails the upload with "Bunny rejected the signature".
+- Cancel also stops a running backoff wait (it sleeps in 0.25 s steps).
+- While any upload runs, the engine holds a `ProcessInfo` activity with `.idleSystemSleepDisabled`, so the Mac does not idle-sleep. The display may still sleep.
+
+## Resume
+
+- During a parallel upload, `uploads.json` keeps a `ResumeState` for the row: part count, file size and modification date, and each part URL as soon as Bunny hands it out.
+- Retry on a failed or interrupted row continues into the same video: it asks every saved part for its offset (`HEAD`), sends the rest, and then the final `Upload-Concat`. Parts Bunny no longer knows (404, 410) start over.
+- Bunny also keeps the partial bytes of an aborted `PATCH`, so the confirmed offset is often higher than the blocks the client got a response for. Resume always starts from Bunny's offset.
+- A file that changed in the meantime (size or modification date) uploads from zero with a fresh split.
+- Cancel and a finished upload clear the saved parts.
+
+## Fault test against the real library
+
+```sh
+./scripts/make-app.sh release
+./BunnyUploader.app/Contents/MacOS/BunnyUploader --fault-test
+```
+
+Without opening a window, the binary reads the credentials from the Keychain and creates two 64 MB test videos in the library. TUS requests go through `FaultInjectingURLProtocol`, which drops connections before sending, loses responses after the server took the data, and answers 503 at random. The run checks three things:
+
+1. An upload with faults finishes, and Bunny gets every byte exactly once.
+2. An upload cancelled at 40 % continues from its saved parts and sends only the missing bytes.
+3. A second upload into the same video (what Retry does) succeeds even when it starts with an invalid signature (401, then a fresh one).
+
+Both videos are deleted at the end. The exit code is 0 for PASS and 1 for FAIL; details go to `debug.log`.

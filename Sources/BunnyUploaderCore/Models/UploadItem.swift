@@ -67,6 +67,36 @@ public enum UploadState: Equatable, Codable, Sendable {
     }
 }
 
+/// What a parallel upload needs to continue after a quit, crash, or failure:
+/// the split it used and the part URLs Bunny gave out so far.
+public struct ResumeState: Codable, Equatable, Sendable {
+    public var partCount: Int
+    public var fileSize: Int64
+    public var fileModified: Date?
+    /// Part index -> partial upload URL.
+    public var parts: [Int: String]
+
+    public init(partCount: Int, fileSize: Int64, fileModified: Date?, parts: [Int: String] = [:]) {
+        self.partCount = partCount
+        self.fileSize = fileSize
+        self.fileModified = fileModified
+        self.parts = parts
+    }
+
+    /// Whether the file on disk is still the one the saved parts came from.
+    public func matches(fileSize: Int64, fileModified: Date?) -> Bool {
+        guard self.fileSize == fileSize else { return false }
+        guard let saved = self.fileModified, let current = fileModified else {
+            return self.fileModified == nil && fileModified == nil
+        }
+        return abs(saved.timeIntervalSince(current)) < 1
+    }
+
+    public var partURLs: [Int: URL] {
+        return parts.compactMapValues { URL(string: $0) }
+    }
+}
+
 /// One item in the upload queue. Observable so the UI reacts to changes.
 @MainActor
 public final class UploadItem: ObservableObject, Identifiable {
@@ -84,6 +114,8 @@ public final class UploadItem: ObservableObject, Identifiable {
     @Published public var libraryId: String?
     /// When the upload reached a terminal state.
     @Published public var finishedAt: Date?
+    /// Saved parts of an unfinished parallel upload, used by Retry to continue.
+    public var resume: ResumeState?
 
     public init(
         id: UUID = UUID(),
@@ -108,6 +140,11 @@ public final class UploadItem: ObservableObject, Identifiable {
     public var embedLink: String? {
         guard let videoId, let libraryId else { return nil }
         return BunnyAPIClient.embedLink(libraryId: libraryId, videoId: videoId)
+    }
+
+    /// Modification date of the source file, or nil when it cannot be read.
+    public var fileModified: Date? {
+        return (try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 
     /// Whether the source file is still where it was dropped from.

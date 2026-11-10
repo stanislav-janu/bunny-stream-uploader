@@ -8,6 +8,8 @@ import BunnyUploaderCore
 /// Buffers early-launch URLs until the UI is ready.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var onOpen: (([URL]) -> Void)?
+    /// Number of running uploads, asked before quitting.
+    var activeUploads: (() -> Int)?
     private var buffered: [URL] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -18,6 +20,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSUpdateDynamicServices()
         // Ask for notification permission so completed uploads can notify.
         Notifications.requestAuthorization()
+    }
+
+    /// Asks before quitting while uploads run. Quitting leaves them as they are (no Cancel),
+    /// so their videos stay in Bunny and the rows load as Interrupted for Retry.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let running = activeUploads?() ?? 0
+        guard running > 0 else { return .terminateNow }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = String(localized: "Quit while uploading?")
+        alert.informativeText = String(localized: "Uploads still running: \(running). If you quit now, they stop and you can retry them after the next launch.")
+        alert.addButton(withTitle: String(localized: "Keep Uploading"))
+        alert.addButton(withTitle: String(localized: "Quit"))
+        let response = alert.runModal()
+        return response == .alertSecondButtonReturn ? .terminateNow : .terminateCancel
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
@@ -63,6 +80,12 @@ struct BunnyUploaderApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var engine = UploadEngine(history: .standard())
 
+    init() {
+        if CommandLine.arguments.contains("--fault-test") {
+            FaultTestCommand.runAndExit()
+        }
+    }
+
     var body: some Scene {
         Window("Bunny Stream Uploader", id: "main") {
             ContentView()
@@ -75,6 +98,7 @@ struct BunnyUploaderApp: App {
                         }
                     }
                     appDelegate.flushPending()
+                    appDelegate.activeUploads = { engine.activeCount }
                     // Wire UI side-effects the Core engine intentionally does not depend on.
                     engine.onUploadFinished = { item in
                         Notifications.uploadFinished(fileName: item.fileName)
@@ -97,5 +121,28 @@ struct BunnyUploaderApp: App {
             SettingsView()
                 .environmentObject(engine)
         }
+    }
+}
+
+/// `BunnyUploader --fault-test`: runs `FaultTest` against the saved library from the
+/// terminal (no window), prints the report, and exits 0 on pass, 1 on fail.
+enum FaultTestCommand {
+    static func runAndExit() -> Never {
+        let done = DispatchSemaphore(value: 0)
+        let result = ResultBox()
+        Task.detached {
+            let passed = await FaultTest.runWithStoredCredentials { line in
+                print(line)
+                fflush(stdout)
+            }
+            result.passed = passed
+            done.signal()
+        }
+        done.wait()
+        exit(result.passed ? 0 : 1)
+    }
+
+    private final class ResultBox: @unchecked Sendable {
+        var passed = false
     }
 }

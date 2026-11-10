@@ -44,4 +44,6 @@ One name per thing, used the same way in buttons, menus, tooltips, errors, and a
 | Copy ID | Put the video ID on the pasteboard | copy GUID, copy key |
 | Copy Embed Link | Put the embed link on the pasteboard | copy URL, share |
 | Open Settings | Open the Settings window | configure, set up |
+| Keep Uploading | Stay in the app when Quit would stop running uploads | continue, stay, cancel |
+| Quit | Close the app; running uploads stop and load as Interrupted | exit, close |
 | Save | Check the credentials with Bunny, then store them in the Keychain | apply, OK, verify |

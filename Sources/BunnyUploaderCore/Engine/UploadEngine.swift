@@ -24,6 +24,8 @@ public final class UploadEngine: ObservableObject {
     /// Injection points for tests (mock URLProtocol). Default to production behavior.
     public var apiSession: URLSession = .shared
     public var parallelSessionConfiguration: URLSessionConfiguration?
+    /// Backoff before each retry of a failed part request (tests shorten it).
+    public var partRetryDelays: [TimeInterval] = ParallelTUSUploader.defaultRetryDelays
     /// Where checked credentials are stored. Tests replace it to keep off the Keychain.
     public var persistCredentials: (Credentials) -> Void = { KeychainStore.save($0) }
 
@@ -95,9 +97,30 @@ public final class UploadEngine: ObservableObject {
         return credentials.isComplete
     }
 
+    /// Keeps the Mac from idle sleep while any upload runs.
+    private var sleepActivity: NSObjectProtocol?
+
+    /// Whether the engine currently holds the "no idle sleep" assertion.
+    public var isPreventingSleep: Bool {
+        return sleepActivity != nil
+    }
+
+    private func updateSleepPrevention() {
+        if activeCount > 0, sleepActivity == nil {
+            sleepActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.idleSystemSleepDisabled, .userInitiated],
+                reason: "Uploading video to Bunny"
+            )
+        } else if activeCount == 0, let activity = sleepActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            sleepActivity = nil
+        }
+    }
+
     /// Recomputes aggregate metrics for the header and Dock. Call on state/progress change.
     private func recomputeAggregate() {
         activeCount = items.filter { $0.state.isActive }.count
+        updateSleepPrevention()
         let uploading = items.filter { $0.state == .uploading }
         totalThroughputMBps = uploading.reduce(0) { $0 + $1.throughputMBps }
         if uploading.isEmpty {
@@ -139,8 +162,10 @@ public final class UploadEngine: ObservableObject {
                     if state.isTerminal, item.finishedAt == nil {
                         item.finishedAt = Date()
                     }
-                    // Rows changing state affect engine-level UI such as Clear Finished.
+                    // Rows changing state affect engine-level UI such as Clear Finished,
+                    // the active count, and sleep prevention.
                     self.objectWillChange.send()
+                    self.recomputeAggregate()
                     self.saveHistory()
                 }
             }
@@ -250,6 +275,7 @@ public final class UploadEngine: ObservableObject {
     private func discardVideo(_ item: UploadItem) {
         guard let guid = item.videoId else { return }
         item.videoId = nil
+        item.resume = nil
         guard item.libraryId == nil || item.libraryId == credentials.libraryId else { return }
         deleteVideo(guid: guid)
     }
@@ -309,12 +335,7 @@ public final class UploadEngine: ObservableObject {
             apiKey: credentials.apiKey,
             videoId: guid
         )
-        let headers = [
-            "AuthorizationSignature": signed.value,
-            "AuthorizationExpire": signed.expiration,
-            "LibraryId": credentials.libraryId,
-            "VideoId": guid,
-        ]
+        let headers = Self.authHeaders(signed: signed, libraryId: credentials.libraryId, videoId: guid)
         let context = [
             "title": item.fileName,
             "filetype": item.mimeType,
@@ -325,18 +346,57 @@ public final class UploadEngine: ObservableObject {
         recomputeAggregate()
         samples[item.id] = Sample()
 
-        let threads = threadCount(for: item.fileSize)
-        let useParallel = threads > 1 && item.fileSize >= parallelThresholdBytes
+        // A retried upload into the same video continues its saved parts when the file
+        // is unchanged; otherwise it starts over with a fresh split.
+        let modified = item.fileModified
+        var threads = threadCount(for: item.fileSize)
+        var useParallel = threads > 1 && item.fileSize >= parallelThresholdBytes
+        var resumeParts: [Int: URL] = [:]
+        if !createdNow, let saved = item.resume, saved.matches(fileSize: item.fileSize, fileModified: modified) {
+            threads = saved.partCount
+            useParallel = true
+            resumeParts = saved.partURLs
+        }
         if useParallel {
-            await runParallel(item, headers: headers, metadata: context, partCount: threads)
+            if resumeParts.isEmpty {
+                item.resume = ResumeState(partCount: threads, fileSize: item.fileSize, fileModified: modified)
+            }
+            saveHistory()
+            await runParallel(item, headers: headers, metadata: context, partCount: threads, resumeParts: resumeParts)
         } else {
+            item.resume = nil
             runSingleStream(item, headers: headers, context: context)
         }
     }
 
+    nonisolated static func authHeaders(signed: Signature.Signed, libraryId: String, videoId: String) -> [String: String] {
+        return [
+            "AuthorizationSignature": signed.value,
+            "AuthorizationExpire": signed.expiration,
+            "LibraryId": libraryId,
+            "VideoId": videoId,
+        ]
+    }
+
+    /// Makes fresh auth headers for the same video, used after a 401 (expired signature).
+    nonisolated static func signer(credentials: Credentials, videoId: String) -> @Sendable () -> [String: String] {
+        let libraryId = credentials.libraryId
+        let apiKey = credentials.apiKey
+        return {
+            let signed = Signature.make(libraryId: libraryId, apiKey: apiKey, videoId: videoId)
+            return authHeaders(signed: signed, libraryId: libraryId, videoId: videoId)
+        }
+    }
+
     /// Parallel upload of a single file via TUS concatenation (N threads).
-    private func runParallel(_ item: UploadItem, headers: [String: String], metadata: [String: String], partCount: Int) async {
-        let uploader = ParallelTUSUploader(sessionConfiguration: parallelSessionConfiguration)
+    private func runParallel(
+        _ item: UploadItem,
+        headers: [String: String],
+        metadata: [String: String],
+        partCount: Int,
+        resumeParts: [Int: URL]
+    ) async {
+        let uploader = ParallelTUSUploader(sessionConfiguration: parallelSessionConfiguration, retryDelays: partRetryDelays)
         parallelUploaders[item.id] = uploader
         let id = item.id
         do {
@@ -346,6 +406,18 @@ public final class UploadEngine: ObservableObject {
                 partCount: partCount,
                 authHeaders: headers,
                 metadata: metadata,
+                resign: Self.signer(credentials: credentials, videoId: headers["VideoId"] ?? ""),
+                resumeParts: resumeParts,
+                onResumed: { [weak self] bytes in
+                    Task { @MainActor in
+                        self?.handleResumed(item, bytes: bytes)
+                    }
+                },
+                onPartCreated: { [weak self] index, url in
+                    Task { @MainActor in
+                        self?.savePart(item, index: index, url: url)
+                    }
+                },
                 onProgress: { [weak self] bytes in
                     Task { @MainActor in
                         self?.handleProgress(item, bytes: bytes)
@@ -415,8 +487,25 @@ public final class UploadEngine: ObservableObject {
         }
     }
 
+    /// Bytes already on Bunny when a resumed upload starts: shown as progress, and used
+    /// as the throughput baseline so the jump does not read as speed.
+    private func handleResumed(_ item: UploadItem, bytes: Int64) {
+        guard item.state == .uploading else { return }
+        item.bytesUploaded = bytes
+        samples[item.id] = Sample(history: [(Date(), bytes)])
+        recomputeAggregate()
+    }
+
+    /// Remembers a new part URL so Retry can continue this upload later.
+    private func savePart(_ item: UploadItem, index: Int, url: URL) {
+        guard item.state == .uploading, item.resume != nil else { return }
+        item.resume?.parts[index] = url.absoluteString
+        saveHistory()
+    }
+
     private func handleSuccess(_ item: UploadItem) {
         guard item.state == .uploading else { return }
+        item.resume = nil
         item.bytesUploaded = item.fileSize
         item.throughputMBps = 0
         item.state = .processing

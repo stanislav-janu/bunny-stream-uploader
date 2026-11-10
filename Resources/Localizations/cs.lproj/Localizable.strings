@@ -73,3 +73,10 @@
 "Bunny answered with HTTP %lld. Try again later." = "Bunny vrátil chybu HTTP %lld. Zkus to později.";
 "Cancel this upload and delete the unfinished video in Bunny" = "Zruší upload a smaže nedokončené video v Bunny";
 "Remove from the list and delete the unfinished video in Bunny" = "Odebere upload ze seznamu a smaže nedokončené video v Bunny";
+
+/* Reliability: signature, quit confirmation */
+"Bunny rejected the signature" = "Bunny odmítl podpis uploadu";
+"Quit while uploading?" = "Ukončit během nahrávání?";
+"Uploads still running: %lld. If you quit now, they stop and you can retry them after the next launch." = "Běžících uploadů: %lld. Když teď aplikaci ukončíš, zastaví se a po dalším spuštění je můžeš zkusit znovu.";
+"Keep Uploading" = "Pokračovat v nahrávání";
+"Quit" = "Ukončit";

@@ -22,6 +22,8 @@ public final class ParallelTUSUploader: @unchecked Sendable {
         case finalFailed(Int, String)
         case missingLocation
         case cancelled
+        /// Bunny answered 401 twice in a row, also after a fresh signature.
+        case signatureRejected
 
         public var errorDescription: String? {
             switch self {
@@ -35,6 +37,7 @@ public final class ParallelTUSUploader: @unchecked Sendable {
                 return String(localized: "Final concatenation failed (HTTP \(code)): \(String(body.prefix(200)))")
             case .missingLocation: return String(localized: "Server did not return a part Location URL")
             case .cancelled: return String(localized: "Cancelled")
+            case .signatureRejected: return String(localized: "Bunny rejected the signature")
             }
         }
     }
@@ -49,12 +52,23 @@ public final class ParallelTUSUploader: @unchecked Sendable {
     private let lock = NSLock()
     private var _totalBytesUploaded: Int64 = 0
     private var _cancelled = false
+    /// Auth headers in use; replaced when a 401 asks for a fresh signature.
+    private var _authHeaders: [String: String] = [:]
+
+    /// Waits before each retry of a failed request (network error, 408, 409, 429, 5xx).
+    /// When they run out, the upload fails.
+    public static let defaultRetryDelays: [TimeInterval] = [0, 3, 5, 10, 20, 60]
+    private let retryDelays: [TimeInterval]
 
     /// Base config for each part's session. One TCP connection per host by default;
     /// tests inject a config with a mock URLProtocol.
     private let sessionConfiguration: URLSessionConfiguration
 
-    public init(sessionConfiguration: URLSessionConfiguration? = nil) {
+    public init(
+        sessionConfiguration: URLSessionConfiguration? = nil,
+        retryDelays: [TimeInterval] = ParallelTUSUploader.defaultRetryDelays
+    ) {
+        self.retryDelays = retryDelays
         if let sessionConfiguration {
             self.sessionConfiguration = sessionConfiguration
         } else {
@@ -99,18 +113,27 @@ public final class ParallelTUSUploader: @unchecked Sendable {
     }
 
     /// Starts the parallel upload. `onProgress` receives the total bytes uploaded.
+    /// `resign` returns fresh auth headers when Bunny answers 401 (expired signature).
+    /// `resumeParts` holds part URLs of an earlier, interrupted run (index -> URL); those parts
+    /// continue from the offset Bunny confirms, and `onResumed` gets the bytes already there.
+    /// `onPartCreated` reports each new part URL so the caller can save it for a later resume.
     public func upload(
         fileURL: URL,
         fileSize: Int64,
         partCount: Int,
         authHeaders: [String: String],
         metadata: [String: String],
+        resign: (@Sendable () -> [String: String])? = nil,
+        resumeParts: [Int: URL] = [:],
+        onResumed: (@Sendable (Int64) -> Void)? = nil,
+        onPartCreated: (@Sendable (Int, URL) -> Void)? = nil,
         onProgress: @escaping @Sendable (Int64) -> Void
     ) async throws -> Result {
-        lock.lock()
-        _totalBytesUploaded = 0
-        _cancelled = false
-        lock.unlock()
+        lock.withLock {
+            _totalBytesUploaded = 0
+            _cancelled = false
+            _authHeaders = authHeaders
+        }
 
         let start = Date()
         logStart = start
@@ -127,17 +150,32 @@ public final class ParallelTUSUploader: @unchecked Sendable {
         let parts = Self.splitIntoParts(fileSize: fileSize, partCount: partCount)
         let metadataHeader = Self.encodeMetadata(metadata)
 
+        // Resume: ask Bunny how far each saved part got. Unknown or expired parts start over.
+        var starts: [Int: (url: URL, offset: Int64)] = [:]
+        if !resumeParts.isEmpty {
+            starts = try await resumeOffsets(resumeParts, parts: parts, resign: resign)
+            let already = starts.values.reduce(Int64(0)) { $0 + $1.offset }
+            lock.withLock {
+                _totalBytesUploaded = already
+            }
+            log("RESUME: \(starts.count) of \(parts.count) parts known, \(already) B already on Bunny")
+            onResumed?(already)
+        }
+
         var partialURLs = [URL?](repeating: nil, count: parts.count)
         try await withThrowingTaskGroup(of: (Int, URL).self) { group in
             for (index, part) in parts.enumerated() {
+                let start = starts[index]
                 group.addTask {
                     let url = try await self.uploadPart(
                         index: index,
                         fd: fd,
                         offset: part.offset,
                         length: part.length,
-                        authHeaders: authHeaders,
                         metadataHeader: metadataHeader,
+                        resign: resign,
+                        existing: start,
+                        onPartCreated: onPartCreated,
                         onProgress: onProgress
                     )
                     return (index, url)
@@ -153,7 +191,7 @@ public final class ParallelTUSUploader: @unchecked Sendable {
 
         let ordered = partialURLs.compactMap { $0 }
         let tFinal = Date()
-        try await sendFinal(partialURLs: ordered, authHeaders: authHeaders, metadataHeader: metadataHeader)
+        try await sendFinal(partialURLs: ordered, metadataHeader: metadataHeader, resign: resign)
         log("FINAL done in \(ms(tFinal)). TOTAL \(ms(start)), \(total/1_048_576)MB")
 
         return Result(bytesUploaded: total, elapsed: Date().timeIntervalSince(start))
@@ -165,15 +203,139 @@ public final class ParallelTUSUploader: @unchecked Sendable {
         lock.unlock()
     }
 
+    // MARK: - Retry
+
+    enum Disposition {
+        case retry
+        case resign
+        case fail
+    }
+
+    /// What to do after an HTTP status: 401 asks for a new signature; 408, 409
+    /// (offset conflict), 423 (part still locked by an aborted request), 429, and 5xx
+    /// are worth another try; anything else fails.
+    static func disposition(status: Int) -> Disposition {
+        switch status {
+        case 401: return .resign
+        case 408, 409, 423, 429, 500..<600: return .retry
+        default: return .fail
+        }
+    }
+
+    private static func disposition(for error: Error) -> Disposition {
+        if let error = error as? UploadError {
+            switch error {
+            case .partialCreateFailed(let code, _), .patchFailed(let code, _), .finalFailed(let code, _):
+                return disposition(status: code)
+            default:
+                return .fail
+            }
+        }
+        if let error = error as? URLError {
+            return error.code == .cancelled ? .fail : .retry
+        }
+        return .fail
+    }
+
+    /// Runs `operation` until it succeeds, retrying with `retryDelays` and asking for
+    /// a fresh signature once per 401. `operation` gets the current auth headers and
+    /// whether this is a retry (so it can resync its offset first).
+    private func withRetry<T>(
+        _ label: String,
+        resign: (@Sendable () -> [String: String])?,
+        _ operation: ([String: String], Bool) async throws -> T
+    ) async throws -> T {
+        var attempt = 0
+        var resignedSinceLastTry = false
+        var isRetry = false
+        while true {
+            if isCancelled { throw UploadError.cancelled }
+            do {
+                let result = try await operation(currentHeaders, isRetry)
+                return result
+            } catch {
+                if isCancelled { throw UploadError.cancelled }
+                switch Self.disposition(for: error) {
+                case .fail:
+                    throw error
+                case .resign:
+                    guard let resign, !resignedSinceLastTry else {
+                        throw UploadError.signatureRejected
+                    }
+                    log("\(label): HTTP 401, new signature")
+                    replaceHeaders(resign())
+                    resignedSinceLastTry = true
+                    isRetry = true
+                case .retry:
+                    guard attempt < retryDelays.count else { throw error }
+                    let delay = retryDelays[attempt]
+                    attempt += 1
+                    log("\(label): \(error.localizedDescription), retry \(attempt) in \(delay)s")
+                    try await sleepUnlessCancelled(delay)
+                    resignedSinceLastTry = false
+                    isRetry = true
+                }
+            }
+        }
+    }
+
+    /// Sleeps in short steps so Cancel does not wait for a long backoff.
+    private func sleepUnlessCancelled(_ seconds: TimeInterval) async throws {
+        var remaining = seconds
+        while remaining > 0 {
+            if isCancelled { throw UploadError.cancelled }
+            let step = min(remaining, 0.25)
+            try await Task.sleep(nanoseconds: UInt64(step * 1_000_000_000))
+            remaining -= step
+        }
+    }
+
     // MARK: - Part (partial)
+
+    /// Confirmed offsets of saved parts. A part Bunny no longer knows (404, 410) is left
+    /// out and starts over.
+    private func resumeOffsets(
+        _ saved: [Int: URL],
+        parts: [(offset: Int64, length: Int64)],
+        resign: (@Sendable () -> [String: String])?
+    ) async throws -> [Int: (url: URL, offset: Int64)] {
+        let config = sessionConfiguration.copy() as! URLSessionConfiguration
+        let session = URLSession(configuration: config)
+        defer { session.finishTasksAndInvalidate() }
+
+        return try await withThrowingTaskGroup(of: (Int, URL, Int64?).self) { group in
+            for (index, url) in saved where index < parts.count {
+                group.addTask {
+                    do {
+                        let offset = try await self.withRetry("part \(index) HEAD", resign: resign) { headers, _ in
+                            try await self.fetchOffset(partialURL: url, headers: headers, session: session, label: "part \(index)")
+                        }
+                        return (index, url, min(offset, parts[index].length))
+                    } catch ParallelTUSUploader.UploadError.patchFailed(let code, _) where code == 404 || code == 410 {
+                        self.log("part \(index): saved part gone (HTTP \(code)), starting it over")
+                        return (index, url, nil)
+                    }
+                }
+            }
+            var result: [Int: (url: URL, offset: Int64)] = [:]
+            for try await (index, url, offset) in group {
+                if let offset {
+                    result[index] = (url, offset)
+                }
+            }
+            return result
+        }
+    }
 
     private func uploadPart(
         index: Int,
         fd: Int32,
         offset: Int64,
         length: Int64,
-        authHeaders: [String: String],
         metadataHeader: String?,
+        resign: (@Sendable () -> [String: String])?,
+        existing: (url: URL, offset: Int64)?,
+        onPartCreated: (@Sendable (Int, URL) -> Void)?,
         onProgress: @escaping @Sendable (Int64) -> Void
     ) async throws -> URL {
         // Own session = own TCP connection (independent congestion window).
@@ -181,7 +343,63 @@ public final class ParallelTUSUploader: @unchecked Sendable {
         let session = URLSession(configuration: config)
         defer { session.finishTasksAndInvalidate() }
 
-        // 1) POST creation s Upload-Concat: partial
+        // 1) POST creation with Upload-Concat: partial, unless a resumed part exists.
+        let partialURL: URL
+        if let existing {
+            partialURL = existing.url
+        } else {
+            partialURL = try await withRetry("part \(index) POST", resign: resign) { headers, _ in
+                try await self.createPartial(index: index, length: length, metadataHeader: metadataHeader, headers: headers, session: session)
+            }
+            onPartCreated?(index, partialURL)
+        }
+
+        // 2) PATCH the part's data in blocks; reads via pread off the async pool.
+        // `sent` is the offset Bunny confirmed; a retry first asks Bunny for it (HEAD).
+        var sent: Int64 = existing?.offset ?? 0
+        var block = 0
+        while sent < length {
+            try await withRetry("part \(index) block \(block)", resign: resign) { headers, isRetry in
+                if isRetry {
+                    let confirmed = try await self.fetchOffset(partialURL: partialURL, headers: headers, session: session, label: "part \(index)")
+                    if confirmed != sent {
+                        self.log("part \(index): resync offset \(sent) -> \(confirmed)")
+                        self.bumpProgress(by: confirmed - sent, onProgress: onProgress)
+                        sent = confirmed
+                    }
+                    if sent >= length {
+                        return
+                    }
+                }
+                let blockLen = Int(min(Int64(self.patchBlockSize), length - sent))
+                let tRead = Date()
+                let data = try await self.readBlock(fd: fd, offset: offset + sent, length: blockLen)
+                let readMs = self.ms(tRead)
+                if data.isEmpty {
+                    throw UploadError.read(0)
+                }
+                let tPatch = Date()
+                let patchCode = try await self.patch(partialURL: partialURL, offset: sent, data: data, headers: headers, session: session)
+                let patchMs = Date().timeIntervalSince(tPatch)
+                let mbps = patchMs > 0 ? Double(data.count) / patchMs / 1_048_576 : 0
+                self.log("part \(index) block \(block): \(data.count/1_048_576)MB PATCH → HTTP \(patchCode), read \(readMs), patch \(String(format: "%.2fs", patchMs)) = \(String(format: "%.1f", mbps)) MB/s")
+                sent += Int64(data.count)
+                self.bumpProgress(by: Int64(data.count), onProgress: onProgress)
+            }
+            block += 1
+        }
+
+        log("part \(index): DONE (\(sent/1_048_576)MB)")
+        return partialURL
+    }
+
+    private func createPartial(
+        index: Int,
+        length: Int64,
+        metadataHeader: String?,
+        headers: [String: String],
+        session: URLSession
+    ) async throws -> URL {
         let tPost = Date()
         var createReq = URLRequest(url: endpoint)
         createReq.httpMethod = "POST"
@@ -191,7 +409,7 @@ public final class ParallelTUSUploader: @unchecked Sendable {
         if let metadataHeader {
             createReq.setValue(metadataHeader, forHTTPHeaderField: "Upload-Metadata")
         }
-        for (k, v) in authHeaders {
+        for (k, v) in headers {
             createReq.setValue(v, forHTTPHeaderField: k)
         }
 
@@ -207,45 +425,53 @@ public final class ParallelTUSUploader: @unchecked Sendable {
         else {
             throw UploadError.missingLocation
         }
-
-        // 2) PATCH the part's data in blocks; reads via pread off the async pool.
-        var sent: Int64 = 0
-        var block = 0
-        while sent < length {
-            if isCancelled { throw UploadError.cancelled }
-            let blockLen = Int(min(Int64(patchBlockSize), length - sent))
-
-            let tRead = Date()
-            let data = try await readBlock(fd: fd, offset: offset + sent, length: blockLen)
-            let readMs = ms(tRead)
-            if data.isEmpty { break }
-
-            var patchReq = URLRequest(url: partialURL)
-            patchReq.httpMethod = "PATCH"
-            patchReq.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
-            patchReq.setValue("application/offset+octet-stream", forHTTPHeaderField: "Content-Type")
-            patchReq.setValue(String(sent), forHTTPHeaderField: "Upload-Offset")
-            for (k, v) in authHeaders {
-                patchReq.setValue(v, forHTTPHeaderField: k)
-            }
-
-            let tPatch = Date()
-            let (patchData, patchResp) = try await session.upload(for: patchReq, from: data)
-            let patchMs = Date().timeIntervalSince(tPatch)
-            let patchCode = (patchResp as? HTTPURLResponse)?.statusCode ?? 0
-            let mbps = patchMs > 0 ? Double(data.count) / patchMs / 1_048_576 : 0
-            log("part \(index) block \(block): \(data.count/1_048_576)MB PATCH → HTTP \(patchCode), read \(readMs), patch \(String(format: "%.2fs", patchMs)) = \(String(format: "%.1f", mbps)) MB/s")
-            guard (200..<300).contains(patchCode) else {
-                throw UploadError.patchFailed(patchCode, String(data: patchData, encoding: .utf8) ?? "")
-            }
-
-            sent += Int64(data.count)
-            block += 1
-            bumpProgress(by: Int64(data.count), onProgress: onProgress)
-        }
-
-        log("part \(index): DONE (\(sent/1_048_576)MB)")
         return partialURL
+    }
+
+    /// Sends one block; returns the HTTP status (2xx) or throws `patchFailed`.
+    private func patch(
+        partialURL: URL,
+        offset: Int64,
+        data: Data,
+        headers: [String: String],
+        session: URLSession
+    ) async throws -> Int {
+        var patchReq = URLRequest(url: partialURL)
+        patchReq.httpMethod = "PATCH"
+        patchReq.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
+        patchReq.setValue("application/offset+octet-stream", forHTTPHeaderField: "Content-Type")
+        patchReq.setValue(String(offset), forHTTPHeaderField: "Upload-Offset")
+        for (k, v) in headers {
+            patchReq.setValue(v, forHTTPHeaderField: k)
+        }
+        let (patchData, patchResp) = try await session.upload(for: patchReq, from: data)
+        let patchCode = (patchResp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(patchCode) else {
+            throw UploadError.patchFailed(patchCode, String(data: patchData, encoding: .utf8) ?? "")
+        }
+        return patchCode
+    }
+
+    /// Asks Bunny how many bytes of a part it has (`HEAD`, `Upload-Offset`).
+    private func fetchOffset(partialURL: URL, headers: [String: String], session: URLSession, label: String) async throws -> Int64 {
+        let tHead = Date()
+        var req = URLRequest(url: partialURL)
+        req.httpMethod = "HEAD"
+        req.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
+        for (k, v) in headers {
+            req.setValue(v, forHTTPHeaderField: k)
+        }
+        let (data, resp) = try await session.data(for: req)
+        let http = resp as? HTTPURLResponse
+        let code = http?.statusCode ?? 0
+        log("\(label): HEAD → HTTP \(code), offset \(http?.value(forHTTPHeaderField: "Upload-Offset") ?? "-") in \(ms(tHead))")
+        guard (200..<300).contains(code),
+              let value = http?.value(forHTTPHeaderField: "Upload-Offset"),
+              let offset = Int64(value)
+        else {
+            throw UploadError.patchFailed(code == 200 ? 0 : code, String(data: data, encoding: .utf8) ?? "")
+        }
+        return offset
     }
 
     private func ms(_ since: Date) -> String {
@@ -256,8 +482,8 @@ public final class ParallelTUSUploader: @unchecked Sendable {
 
     private func sendFinal(
         partialURLs: [URL],
-        authHeaders: [String: String],
-        metadataHeader: String?
+        metadataHeader: String?,
+        resign: (@Sendable () -> [String: String])?
     ) async throws {
         let config = sessionConfiguration.copy() as! URLSessionConfiguration
         let session = URLSession(configuration: config)
@@ -265,21 +491,23 @@ public final class ParallelTUSUploader: @unchecked Sendable {
 
         let concatValue = "final;" + partialURLs.map { $0.absoluteString }.joined(separator: " ")
 
-        var req = URLRequest(url: endpoint)
-        req.httpMethod = "POST"
-        req.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
-        req.setValue(concatValue, forHTTPHeaderField: "Upload-Concat")
-        if let metadataHeader {
-            req.setValue(metadataHeader, forHTTPHeaderField: "Upload-Metadata")
-        }
-        for (k, v) in authHeaders {
-            req.setValue(v, forHTTPHeaderField: k)
-        }
+        try await withRetry("FINAL", resign: resign) { headers, _ in
+            var req = URLRequest(url: self.endpoint)
+            req.httpMethod = "POST"
+            req.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
+            req.setValue(concatValue, forHTTPHeaderField: "Upload-Concat")
+            if let metadataHeader {
+                req.setValue(metadataHeader, forHTTPHeaderField: "Upload-Metadata")
+            }
+            for (k, v) in headers {
+                req.setValue(v, forHTTPHeaderField: k)
+            }
 
-        let (data, resp) = try await session.data(for: req)
-        let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-        guard (200..<300).contains(code) else {
-            throw UploadError.finalFailed(code, String(data: data, encoding: .utf8) ?? "")
+            let (data, resp) = try await session.data(for: req)
+            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code) else {
+                throw UploadError.finalFailed(code, String(data: data, encoding: .utf8) ?? "")
+            }
         }
     }
 
@@ -307,6 +535,18 @@ public final class ParallelTUSUploader: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return _totalBytesUploaded
+    }
+
+    private var currentHeaders: [String: String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _authHeaders
+    }
+
+    private func replaceHeaders(_ headers: [String: String]) {
+        lock.lock()
+        _authHeaders = headers
+        lock.unlock()
     }
 
     private var isCancelled: Bool {

@@ -149,7 +149,9 @@ Acceptance:
 - [unit] A part that fails with a network error or 5xx retries after 0, 3, 5, 10, 20, 60 s, then fails the upload.
 - [unit] A retried part resumes from its last confirmed offset (HEAD `Upload-Offset`), not from zero.
 - [unit] Progress does not count retried bytes twice.
-Status: todo
+- [self] `--fault-test` injects dropped connections, lost responses, and 503s against the real library; Bunny gets every byte exactly once.
+Note: covers the parallel path (files of 50 MB and more); single-stream files use TUSKit's own retry.
+Status: done
 
 ### S-010 Continue after the signature expires
 As the user, a long upload keeps going when Bunny rejects the signature with 401.
@@ -157,7 +159,9 @@ Depends: S-009
 Acceptance:
 - [unit] On 401 the engine makes a new signature for the same video ID and retries that request once.
 - [unit] A second 401 in a row fails the upload with "Bunny rejected the signature".
-Status: todo
+- [self] `--fault-test` starts a re-upload with an invalid signature; Bunny answers 401 and the upload finishes after re-signing.
+Note: covers the parallel path; a signature lasts 24 h, so only uploads longer than that hit it.
+Status: done
 
 ### S-011 Keep the Mac awake while uploading
 As the user, I leave the Mac during a long upload and it does not go to sleep until the upload ends.
@@ -165,26 +169,32 @@ Depends: S-003
 Acceptance:
 - [unit] The engine holds a "prevent idle sleep" assertion while any upload is active and releases it when none is.
 - [manual] With display sleep set to 1 minute, a 10 minute upload finishes; the display may sleep, the system does not.
-Status: todo
+Status: doing
 
 ### S-012 Confirm quitting while uploads run
 As the user, I press Command-Q during an upload and the app asks before stopping it.
 Screens: quit-confirm
 Depends: S-003
 Acceptance:
-- [snap] The alert names how many uploads are running and offers "Quit" and "Keep uploading" (default).
+- [snap] The alert names how many uploads are running and offers "Quit" and "Keep Uploading" (default).
 - [unit] With no active uploads the app quits without asking.
-Status: todo
+UX:
+- Flow: Command-Q or Quit from the menu with running uploads -> alert -> Return keeps uploading; Quit stops them without Cancel, so their videos stay in Bunny and the rows load as Interrupted
+- Surface: alert (a problem people must act on right now)
+- Words: title "Quit while uploading?"; message "Uploads still running: %lld. If you quit now, they stop and you can retry them after the next launch."; buttons "Keep Uploading" (default) and "Quit"
+- Access: Return keeps uploading, Escape cancels quitting
+Status: done
 
 ### S-013 Resume an interrupted parallel upload
-As the user, after a crash, quit, or lost network, I press Resume and the upload continues from where its parts stopped.
+As the user, after a crash, quit, or lost network, I press Retry and the upload continues from where its parts stopped.
 Screens: main-finished
 Depends: S-008, S-009
 Acceptance:
 - [unit] Part upload URLs, offsets, and the video ID are saved to Application Support while uploading and deleted after success.
-- [unit] Resume asks each part for its offset (HEAD) and uploads only the rest, then sends the final concatenation.
-- [unit] Resume refuses with "File changed" when size or modification date differ from the saved state.
-Status: todo
+- [unit] Retry asks each saved part for its offset (HEAD) and uploads only the rest, then sends the final concatenation.
+- [unit] A changed file (size or modification date) starts over with a fresh split instead of resuming.
+- [self] `--fault-test` cancels an upload at 40 % and resumes it against the real library; kept + resent bytes equal the file size.
+Status: done
 
 ### S-014 Remove the empty Bunny video after cancelling
 As the user, when I cancel an upload, the empty video does not stay in my Bunny library.

@@ -26,6 +26,7 @@ final class M1FeatureTests: XCTestCase {
         let engine = UploadEngine(credentials: Credentials(apiKey: "k", libraryId: "1"), history: history)
         engine.apiSession = MockURLProtocol.makeSession()
         engine.parallelSessionConfiguration = MockURLProtocol.makeConfiguration()
+        engine.partRetryDelays = []
         engine.persistCredentials = { _ in }
         return engine
     }

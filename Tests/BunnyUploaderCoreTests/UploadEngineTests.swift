@@ -22,6 +22,7 @@ final class UploadEngineTests: XCTestCase {
         let engine = UploadEngine(credentials: Credentials(apiKey: "k", libraryId: "1"))
         engine.apiSession = MockURLProtocol.makeSession()
         engine.parallelSessionConfiguration = MockURLProtocol.makeConfiguration()
+        engine.partRetryDelays = []
         return engine
     }
 

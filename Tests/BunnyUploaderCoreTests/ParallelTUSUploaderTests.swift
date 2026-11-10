@@ -113,7 +113,7 @@ final class ParallelTUSUploaderTests: XCTestCase {
             }
             return (409, Data("conflict".utf8), [:]) // PATCH fails
         }
-        let uploader = ParallelTUSUploader(sessionConfiguration: MockURLProtocol.makeConfiguration())
+        let uploader = ParallelTUSUploader(sessionConfiguration: MockURLProtocol.makeConfiguration(), retryDelays: [])
         do {
             _ = try await uploader.upload(fileURL: fileURL, fileSize: 500, partCount: 1, authHeaders: [:], metadata: [:], onProgress: { _ in })
             XCTFail("Expected failure")
