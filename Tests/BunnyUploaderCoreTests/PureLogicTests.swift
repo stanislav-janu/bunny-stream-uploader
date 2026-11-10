@@ -185,3 +185,19 @@ final class AutoPartCountTests: XCTestCase {
         XCTAssertEqual(engine.threadCount(for: 2 * gb), 12)
     }
 }
+
+final class AppStorageTests: XCTestCase {
+    func testMainAppKeepsItsNames() {
+        XCTAssertEqual(AppStorage.keychainService(bundleId: AppStorage.mainBundleId), "net.bunnyuploader.BunnyUploader")
+        XCTAssertEqual(AppStorage.supportFolderName(bundleId: AppStorage.mainBundleId), "BunnyUploader")
+        XCTAssertEqual(AppStorage.keychainService(bundleId: nil), AppStorage.mainBundleId)
+        XCTAssertEqual(AppStorage.supportFolderName(bundleId: nil), "BunnyUploader")
+    }
+
+    func testOtherBundleIdGetsItsOwnNames() {
+        let test = "net.bunnyuploader.BunnyUploader.test"
+        XCTAssertEqual(AppStorage.keychainService(bundleId: test), test)
+        XCTAssertEqual(AppStorage.supportFolderName(bundleId: test), test)
+        XCTAssertTrue(AppStorage.supportDirectory(bundleId: test).path.hasSuffix("/Application Support/\(test)"))
+    }
+}

@@ -59,6 +59,8 @@ public final class ParallelTUSUploader: @unchecked Sendable {
     /// When they run out, the upload fails.
     public static let defaultRetryDelays: [TimeInterval] = [0, 3, 5, 10, 20, 60]
     private let retryDelays: [TimeInterval]
+    /// How often `finalAccepted` is asked while the final request is pending.
+    private let finalPollInterval: TimeInterval
 
     /// Base config for each part's session. One TCP connection per host by default;
     /// tests inject a config with a mock URLProtocol.
@@ -66,9 +68,11 @@ public final class ParallelTUSUploader: @unchecked Sendable {
 
     public init(
         sessionConfiguration: URLSessionConfiguration? = nil,
-        retryDelays: [TimeInterval] = ParallelTUSUploader.defaultRetryDelays
+        retryDelays: [TimeInterval] = ParallelTUSUploader.defaultRetryDelays,
+        finalPollInterval: TimeInterval = 2
     ) {
         self.retryDelays = retryDelays
+        self.finalPollInterval = finalPollInterval
         if let sessionConfiguration {
             self.sessionConfiguration = sessionConfiguration
         } else {
@@ -83,10 +87,7 @@ public final class ParallelTUSUploader: @unchecked Sendable {
     /// Diagnostic logging to a file (no sensitive data).
     /// ~/Library/Application Support/BunnyUploader/debug.log
     static let logFileURL: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = base.appendingPathComponent("BunnyUploader", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir.appendingPathComponent("debug.log")
+        return AppStorage.supportDirectory().appendingPathComponent("debug.log")
     }()
 
     private var logStart = Date()
@@ -127,6 +128,8 @@ public final class ParallelTUSUploader: @unchecked Sendable {
         resumeParts: [Int: URL] = [:],
         onResumed: (@Sendable (Int64) -> Void)? = nil,
         onPartCreated: (@Sendable (Int, URL) -> Void)? = nil,
+        onFinalSent: (@Sendable () -> Void)? = nil,
+        finalAccepted: (@Sendable () async -> Bool)? = nil,
         onProgress: @escaping @Sendable (Int64) -> Void
     ) async throws -> Result {
         lock.withLock {
@@ -191,7 +194,13 @@ public final class ParallelTUSUploader: @unchecked Sendable {
 
         let ordered = partialURLs.compactMap { $0 }
         let tFinal = Date()
-        try await sendFinal(partialURLs: ordered, metadataHeader: metadataHeader, resign: resign)
+        try await sendFinal(
+            partialURLs: ordered,
+            metadataHeader: metadataHeader,
+            resign: resign,
+            onFinalSent: onFinalSent,
+            finalAccepted: finalAccepted
+        )
         log("FINAL done in \(ms(tFinal)). TOTAL \(ms(start)), \(total/1_048_576)MB")
 
         return Result(bytesUploaded: total, elapsed: Date().timeIntervalSince(start))
@@ -480,18 +489,32 @@ public final class ParallelTUSUploader: @unchecked Sendable {
 
     // MARK: - Final concatenation (final)
 
+    /// Sends `Upload-Concat: final`. Bunny answers only after it has merged the parts,
+    /// which takes minutes for large files, but it takes the video over as soon as the
+    /// request arrives (verified: a request dropped after 3 s still moved the video out
+    /// of status 0). So while the request is pending, `finalAccepted` is asked every
+    /// `finalPollInterval`; once Bunny confirms, the request is dropped and the upload is done.
     private func sendFinal(
         partialURLs: [URL],
         metadataHeader: String?,
-        resign: (@Sendable () -> [String: String])?
+        resign: (@Sendable () -> [String: String])?,
+        onFinalSent: (@Sendable () -> Void)?,
+        finalAccepted: (@Sendable () async -> Bool)?
     ) async throws {
         let config = sessionConfiguration.copy() as! URLSessionConfiguration
         let session = URLSession(configuration: config)
-        defer { session.finishTasksAndInvalidate() }
+        defer { session.invalidateAndCancel() }
 
         let concatValue = "final;" + partialURLs.map { $0.absoluteString }.joined(separator: " ")
+        let pollInterval = finalPollInterval
+        var reportedSent = false
 
-        try await withRetry("FINAL", resign: resign) { headers, _ in
+        try await withRetry("FINAL", resign: resign) { headers, isRetry in
+            // A retry after a timeout or a dropped connection: Bunny may already have it.
+            if isRetry, let finalAccepted, await finalAccepted() {
+                self.log("FINAL: Bunny already took the video over, no new request")
+                return
+            }
             var req = URLRequest(url: self.endpoint)
             req.httpMethod = "POST"
             req.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
@@ -502,11 +525,33 @@ public final class ParallelTUSUploader: @unchecked Sendable {
             for (k, v) in headers {
                 req.setValue(v, forHTTPHeaderField: k)
             }
+            if !reportedSent {
+                reportedSent = true
+                onFinalSent?()
+            }
 
-            let (data, resp) = try await session.data(for: req)
-            let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
-            guard (200..<300).contains(code) else {
-                throw UploadError.finalFailed(code, String(data: data, encoding: .utf8) ?? "")
+            try await withThrowingTaskGroup(of: String.self) { group in
+                group.addTask {
+                    let (data, resp) = try await session.data(for: req)
+                    let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                    guard (200..<300).contains(code) else {
+                        throw UploadError.finalFailed(code, String(data: data, encoding: .utf8) ?? "")
+                    }
+                    return "answered HTTP \(code)"
+                }
+                if let finalAccepted {
+                    group.addTask {
+                        while true {
+                            try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
+                            if await finalAccepted() {
+                                return "confirmed by video status, request dropped"
+                            }
+                        }
+                    }
+                }
+                let outcome = try await group.next() ?? "no answer"
+                group.cancelAll()
+                self.log("FINAL: \(outcome)")
             }
         }
     }

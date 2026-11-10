@@ -23,7 +23,20 @@ final class M2ReliabilityTests: XCTestCase {
         var headCalls = 0
         var patchedBytes: Int64 = 0
         var createdParts = 0
+        var finalsDone = 0
+
+        /// Video status the way Bunny reports it: 0 (Created) until a final request arrived.
+        var videoStatus: Int {
+            lock.withLock { finalsDone > 0 ? 2 : 0 }
+        }
         var signaturesSeen: Set<String> = []
+
+        /// Replaces the PATCH failures still to inject (under the lock).
+        func setPatchFailures(_ failures: [Int]) {
+            lock.withLock {
+                patchFailures = failures
+            }
+        }
 
         /// A part Bunny already knows, as after an interrupted run.
         func preset(_ url: String, offset: Int64) {
@@ -56,6 +69,7 @@ final class M2ReliabilityTests: XCTestCase {
                     if !finalFailures.isEmpty {
                         return (finalFailures.removeFirst(), Data(), [:])
                     }
+                    finalsDone += 1
                     return (200, Data(), [:])
                 case "HEAD":
                     headCalls += 1
@@ -311,6 +325,67 @@ final class M2ReliabilityTests: XCTestCase {
     }
 
     @MainActor
+    func testRetryAdoptsVideoBunnyAlreadyHas() async throws {
+        // The final request reached Bunny before the app gave up on it (status 2).
+        let fake = FakeTUS()
+        let engine = makeEngine(fake)
+        MockURLProtocol.handler = { request in
+            if request.url!.absoluteString.contains("tusupload") {
+                return try fake.handle(request)
+            }
+            return (200, Data(#"{"status":2}"#.utf8), [:])
+        }
+        let file = makeFile(size: 60 * 1024 * 1024)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let item = UploadItem(fileURL: file, fileName: "a.mp4", fileSize: Int64(60 * 1024 * 1024), mimeType: "video/mp4")
+        item.videoId = "taken"
+        item.libraryId = "1"
+        item.state = .error("Final concatenation failed (HTTP 400)")
+        engine.reinsert([item])
+        engine.retry(item)
+        await waitTerminal(item)
+        XCTAssertEqual(item.state, .done)
+        XCTAssertEqual(item.videoId, "taken")
+        XCTAssertEqual(item.progress, 1)
+        XCTAssertEqual(fake.stats.created, 0)
+        XCTAssertEqual(fake.stats.patched, 0)
+    }
+
+    @MainActor
+    func testRetryOfDeletedVideoCreatesNewOne() async throws {
+        let fake = FakeTUS()
+        let engine = makeEngine(fake)
+        MockURLProtocol.handler = { request in
+            let url = request.url!.absoluteString
+            if url.contains("tusupload") {
+                return try fake.handle(request)
+            }
+            if request.httpMethod == "GET" {
+                if url.hasSuffix("/gone") {
+                    return (404, Data(), [:])
+                }
+                return (200, Data("{\"status\":\(fake.videoStatus)}".utf8), [:])
+            }
+            return (200, Data(#"{"guid":"fresh"}"#.utf8), [:])
+        }
+        let file = makeFile(size: 60 * 1024 * 1024)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let item = UploadItem(fileURL: file, fileName: "a.mp4", fileSize: Int64(60 * 1024 * 1024), mimeType: "video/mp4")
+        item.videoId = "gone"
+        item.libraryId = "1"
+        item.resume = ResumeState(partCount: 4, fileSize: Int64(60 * 1024 * 1024), fileModified: item.fileModified,
+                                  parts: [0: "https://video.bunnycdn.com/tusupload/old0"])
+        item.state = .error("x")
+        engine.reinsert([item])
+        engine.retry(item)
+        await waitTerminal(item)
+        XCTAssertEqual(item.state, .done)
+        XCTAssertEqual(item.videoId, "fresh")
+        XCTAssertEqual(fake.stats.heads, 0)
+        XCTAssertEqual(fake.stats.patched, Int64(60 * 1024 * 1024))
+    }
+
+    @MainActor
     func testInvalidSavedSplitStartsOver() async throws {
         let fake = FakeTUS()
         let size = 60 * 1024 * 1024
@@ -388,7 +463,7 @@ final class M2ReliabilityTests: XCTestCase {
                 return try fake.handle(request)
             }
             if request.httpMethod == "GET" {
-                return (200, Data("{\"status\":4}".utf8), [:])
+                return (200, Data("{\"status\":\(fake.videoStatus)}".utf8), [:])
             }
             return (200, Data("{\"guid\":\"new\"}".utf8), [:])
         }
@@ -421,7 +496,7 @@ final class M2ReliabilityTests: XCTestCase {
 
         // First run: every PATCH fails, so the upload fails after the parts exist.
         let partCount = engine.threadCount(for: Int64(size))
-        fake.patchFailures = Array(repeating: 500, count: partCount)
+        fake.setPatchFailures(Array(repeating: 500, count: partCount))
         engine.addFile(file)
         let item = engine.items[0]
         await waitTerminal(item)
@@ -432,6 +507,8 @@ final class M2ReliabilityTests: XCTestCase {
         XCTAssertEqual(history.load().first?.resume?.parts.count, saved)
 
         // Retry: saved parts continue (HEAD), missing ones are created, no new video.
+        // Parts cancelled after the first failure never used their injected 500s; drop them.
+        fake.setPatchFailures([])
         let createdBefore = fake.stats.created
         engine.retry(item)
         await waitTerminal(item)

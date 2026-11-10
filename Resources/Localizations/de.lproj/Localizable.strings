@@ -55,7 +55,6 @@
 "Video ID" = "Video-ID";
 "Copy ID" = "ID kopieren";
 "Copied" = "Kopiert";
-"Copy the video ID to the clipboard" = "Kopiert die Video-ID in die Zwischenablage";
 "Copy Embed Link" = "Einbettungslink kopieren";
 "Checking…" = "Wird geprüft …";
 "Interrupted" = "Unterbrochen";
@@ -86,3 +85,5 @@
 "Unable to load collections." = "Sammlungen konnten nicht geladen werden.";
 "Try Again" = "Erneut versuchen";
 "The saved collection no longer exists. New uploads go to the library without a collection." = "Die gespeicherte Sammlung gibt es nicht mehr. Neue Uploads landen ohne Sammlung in der Bibliothek.";
+"Click to copy the video ID: %@" = "Klicken, um die Video-ID zu kopieren: %@";
+"Copy Error Message" = "Fehlermeldung kopieren";

@@ -63,6 +63,8 @@ Small files and the fallback path use TUSKit, which handles resume and offset pe
 - Bunny keeps a part locked (HTTP 423) for about 3 s after a `PATCH` to it was aborted; the retry waits cover that.
 - On HTTP 401 the uploader asks `UploadEngine.signer` for a fresh signature for the same `videoId` and repeats the request. Bunny answers 401 per part, so each part renews once. A second 401 right after renewing fails the upload with "Bunny rejected the signature".
 - Cancel also stops a running backoff wait (it sleeps in 0.25 s steps).
+- Bunny answers the final `Upload-Concat` only after it has merged the parts: a 2.5 GB file in 64 parts got no answer within the 10-minute request timeout. It takes the video over as soon as the request arrives, though: a final request dropped by the client after 3 s still moved the video from status 0 (Created) to 2 (Processing) right away (`--final-probe` checks this against the real library). So while the final request is pending, the uploader asks Get Video every 2 s and, once the status is 1 or higher, drops the request and reports the upload done. A retry after a timeout first asks the status and resends only when the video is still at 0: a second final request for parts Bunny already merged fails with HTTP 400 "Could not find some of the files supplied for concatenation".
+- Once the final request went out, quitting asks nothing (`UploadEngine.uploadsBlockingQuit` leaves such uploads out). The row is saved with `finalSent` and loads as Done after the next launch, with the processing check running.
 - While any upload runs, the engine holds a `ProcessInfo` activity with `.idleSystemSleepDisabled`, so the Mac does not idle-sleep. The display may still sleep.
 
 ## Resume
@@ -72,6 +74,7 @@ Small files and the fallback path use TUSKit, which handles resume and offset pe
 - Bunny also keeps the partial bytes of an aborted `PATCH`, so the confirmed offset is often higher than the blocks the client got a response for. Resume always starts from Bunny's offset.
 - A file that changed in the meantime (size or modification date) uploads from zero with a fresh split.
 - Cancel and a finished upload clear the saved parts.
+- Before reusing a row's video, Retry asks Get Video: status 1 or higher means Bunny already has the upload and the row becomes Done; 404 means the video is gone, so the upload starts over in a new video.
 
 ## Fault test against the real library
 

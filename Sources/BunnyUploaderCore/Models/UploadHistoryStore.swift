@@ -16,6 +16,7 @@ public struct UploadHistoryStore: Sendable {
         public var finishedAt: Date?
         public var resume: ResumeState?
         public var processing: BunnyProcessing?
+        public var finalSent: Bool?
     }
 
     public let fileURL: URL
@@ -26,10 +27,7 @@ public struct UploadHistoryStore: Sendable {
 
     /// `~/Library/Application Support/BunnyUploader/uploads.json`.
     public static func standard() -> UploadHistoryStore {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let url = base
-            .appendingPathComponent("BunnyUploader", isDirectory: true)
-            .appendingPathComponent("uploads.json")
+        let url = AppStorage.supportDirectory().appendingPathComponent("uploads.json")
         return UploadHistoryStore(fileURL: url)
     }
 
@@ -67,7 +65,8 @@ extension UploadItem {
             libraryId: libraryId,
             finishedAt: finishedAt,
             resume: resume,
-            processing: processing
+            processing: processing,
+            finalSent: finalSent
         )
     }
 
@@ -87,5 +86,13 @@ extension UploadItem {
         finishedAt = record.finishedAt
         resume = record.resume
         processing = record.state == .processing ? .processing : record.processing
+        finalSent = record.finalSent ?? false
+        // The app quit after the final request went out: Bunny finished the video itself.
+        if finalSent, state == .interrupted {
+            state = .done
+            bytesUploaded = record.fileSize
+            processing = .processing
+            resume = nil
+        }
     }
 }

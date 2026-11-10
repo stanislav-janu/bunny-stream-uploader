@@ -44,9 +44,10 @@ One name per thing, used the same way in buttons, menus, tooltips, errors, and a
 | Retry | Upload a failed, cancelled, or interrupted file again (into the same video when it still exists) | restart, redo, try again |
 | Remove | Take an upload off the list; a done video stays in Bunny, an unfinished one is deleted there | delete, clear, dismiss |
 | Clear Finished | Remove every done row at once | clean up, purge, clear all |
-| Copy ID | Put the video ID on the pasteboard | copy GUID, copy key |
+| Copy ID | Put the video ID on the pasteboard (click the ID, or the context menu) | copy GUID, copy key |
 | Copy Embed Link | Put the embed link on the pasteboard | copy URL, share |
 | Play in Browser | Open the play page in the default browser | open in Bunny, preview |
+| Copy Error Message | Put a failed row's error text on the pasteboard (the text can also be selected) | copy log, copy details |
 | Open Settings | Open the Settings window | configure, set up |
 | Try Again | Load again after a load failed (collections) | reload, refresh |
 | Keep Uploading | Stay in the app when Quit would stop running uploads | continue, stay, cancel |

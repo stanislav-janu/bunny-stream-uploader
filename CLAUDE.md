@@ -10,6 +10,12 @@ swift build -c release
 open BunnyUploader.app
 ```
 
+A separate test build keeps its own Keychain item, settings, and Application Support folder (`AppStorage` derives the names from the bundle id) and stays out of LaunchServices:
+
+```sh
+BUNNY_BUNDLE_ID=net.bunnyuploader.BunnyUploader.test BUNNY_DISPLAY_NAME="Bunny Stream Uploader Test" BUNNY_APP_DIR=/tmp/BunnyUploaderTest.app ./scripts/make-app.sh release
+```
+
 Minimum target is macOS 26; building needs the Xcode 26 toolchain (Swift 6). There is no Xcode project: `scripts/make-app.sh` assembles the `.app` bundle (Info.plist, icon, localizations, document types), code-signs it, and registers it with LaunchServices. Run via the `.app` bundle, not `swift run` (localizations and Finder integration need the bundle).
 
 ## Architecture

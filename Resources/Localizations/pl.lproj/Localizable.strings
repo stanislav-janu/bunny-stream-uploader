@@ -55,7 +55,6 @@
 "Video ID" = "ID filmu";
 "Copy ID" = "Kopiuj ID";
 "Copied" = "Skopiowano";
-"Copy the video ID to the clipboard" = "Kopiuje ID filmu do schowka";
 "Copy Embed Link" = "Kopiuj link do osadzenia";
 "Checking…" = "Sprawdzanie…";
 "Interrupted" = "Przerwano";
@@ -86,3 +85,5 @@
 "Unable to load collections." = "Nie można wczytać kolekcji.";
 "Try Again" = "Spróbuj ponownie";
 "The saved collection no longer exists. New uploads go to the library without a collection." = "Zapisana kolekcja już nie istnieje. Nowe przesyłania trafią do biblioteki bez kolekcji.";
+"Click to copy the video ID: %@" = "Kliknij, aby skopiować ID filmu: %@";
+"Copy Error Message" = "Kopiuj komunikat o błędzie";

@@ -84,6 +84,15 @@ struct BunnyUploaderApp: App {
         if CommandLine.arguments.contains("--fault-test") {
             FaultTestCommand.runAndExit()
         }
+        if let index = CommandLine.arguments.firstIndex(of: "--delete-test-video"), index + 1 < CommandLine.arguments.count {
+            FaultTestCommand.deleteAndExit(guid: CommandLine.arguments[index + 1])
+        }
+        if let index = CommandLine.arguments.firstIndex(of: "--video-status"), index + 1 < CommandLine.arguments.count {
+            FaultTestCommand.statusAndExit(guid: CommandLine.arguments[index + 1])
+        }
+        if CommandLine.arguments.contains("--final-probe") {
+            FaultTestCommand.probeAndExit()
+        }
         if CommandLine.arguments.contains("--recent-videos") {
             FaultTestCommand.listRecentAndExit()
         }
@@ -101,7 +110,7 @@ struct BunnyUploaderApp: App {
                         }
                     }
                     appDelegate.flushPending()
-                    appDelegate.activeUploads = { engine.activeCount }
+                    appDelegate.activeUploads = { engine.uploadsBlockingQuit }
                     engine.resumeProcessingChecks()
                     // Wire UI side-effects the Core engine intentionally does not depend on.
                     engine.onUploadFinished = { item in
@@ -145,6 +154,50 @@ enum FaultTestCommand {
                 fflush(stdout)
             }
             result.passed = passed
+            done.signal()
+        }
+        done.wait()
+        exit(result.passed ? 0 : 1)
+    }
+
+    /// `BunnyUploader --delete-test-video <guid>`: removes a leftover diagnostics video.
+    static func deleteAndExit(guid: String) -> Never {
+        let done = DispatchSemaphore(value: 0)
+        let result = ResultBox()
+        Task.detached {
+            result.passed = await FaultTest.deleteTestVideo(guid: guid) { line in
+                print(line)
+                fflush(stdout)
+            }
+            done.signal()
+        }
+        done.wait()
+        exit(result.passed ? 0 : 1)
+    }
+
+    /// `BunnyUploader --video-status <guid>`: prints status and stored bytes of one video.
+    static func statusAndExit(guid: String) -> Never {
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            await FaultTest.printVideoStatus(guid: guid) { line in
+                print(line)
+                fflush(stdout)
+            }
+            done.signal()
+        }
+        done.wait()
+        exit(0)
+    }
+
+    /// `BunnyUploader --final-probe`: checks whether Bunny finishes a dropped final request.
+    static func probeAndExit() -> Never {
+        let done = DispatchSemaphore(value: 0)
+        let result = ResultBox()
+        Task.detached {
+            result.passed = await FaultTest.probeFinalDetach { line in
+                print(line)
+                fflush(stdout)
+            }
             done.signal()
         }
         done.wait()

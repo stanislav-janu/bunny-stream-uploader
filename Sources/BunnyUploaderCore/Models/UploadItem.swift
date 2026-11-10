@@ -156,6 +156,9 @@ public final class UploadItem: ObservableObject, Identifiable {
     public var resume: ResumeState?
     /// Bunny's processing of the uploaded video (after Done); nil when unknown.
     @Published public var processing: BunnyProcessing?
+    /// Every byte is up and the final concatenation request went out. From here Bunny
+    /// finishes the video on its own, so quitting no longer loses the upload.
+    @Published public var finalSent = false
 
     public init(
         id: UUID = UUID(),

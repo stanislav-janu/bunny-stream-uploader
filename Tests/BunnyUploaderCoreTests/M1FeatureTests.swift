@@ -149,6 +149,12 @@ final class M1FeatureTests: XCTestCase {
         private var _createCalls = 0
         private var _videoIds: [String] = []
         private var _failTus = true
+        private var _finalDone = false
+
+        var finalDone: Bool {
+            get { lock.withLock { _finalDone } }
+            set { lock.withLock { _finalDone = newValue } }
+        }
 
         var createCalls: Int {
             lock.withLock { _createCalls }
@@ -198,10 +204,12 @@ final class M1FeatureTests: XCTestCase {
                 if request.value(forHTTPHeaderField: "Upload-Concat") == "partial" {
                     return (201, Data(), ["Location": "https://video.bunnycdn.com/tusupload/\(UUID().uuidString)"])
                 }
+                recorder.finalDone = true
                 return (200, Data(), [:])
             }
             if request.httpMethod == "GET" {
-                return (200, Data("{\"status\":4}".utf8), [:])
+                // Bunny keeps the video at 0 (Created) until a final request arrives.
+                return (200, Data("{\"status\":\(recorder.finalDone ? 4 : 0)}".utf8), [:])
             }
             let call = recorder.nextCreate()
             return (200, Data("{\"guid\":\"g-\(call)\"}".utf8), [:])

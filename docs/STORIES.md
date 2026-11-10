@@ -49,8 +49,7 @@ UX:
 - States: checking: Save disabled with a small spinner, under one second usually; passed: green checkmark "Saved"; failed: red text under the field at fault, field keeps focus and value; editing a field clears the old result
 - Words: "Save"; "Checking…"; "Saved"; "Bunny rejected this API key. Copy the Stream API key from the library's API page."; "No library with this ID. Check the Library ID in the Bunny dashboard."; "Unable to reach Bunny. Check your connection and try again."
 - Access: Return saves, Tab order Library ID -> API key -> Save; VoiceOver announces the result; error text has an icon, not only red
-Note: [unit] lines pass; [snap] and [manual] lines need a check in the running app.
-Status: doing
+Status: done
 
 ### S-003 Upload a video by dropping it on the window
 As the user, I drag a video file from Finder onto the window and its upload starts.
@@ -66,8 +65,7 @@ UX:
 - States: no credentials: drop zone shows "Add your Bunny credentials to start uploading." with "Open Settings…"; ready: header "Ready"; hovering a file: drop zone highlights in the accent with an icon change
 - Words: "Open Settings…" (Title Case, ellipsis because it opens a window that asks for input); header "Credentials missing"; drop zone "Drop videos here"
 - Access: Open Settings is the default focus in that state; status uses an icon plus text, not red alone
-Note: [unit] lines pass; [snap] and [manual] lines need a check in the running app.
-Status: doing
+Status: done
 
 ### S-004 Watch throughput and progress of an upload
 As the user, I see how fast the upload goes and how much is left while it runs.
@@ -88,22 +86,20 @@ Acceptance:
 - [unit] Cancelling during "Creating video" does not start the upload afterwards.
 Status: done
 
-### S-006 Copy the video ID of a finished upload
-As the user, I click "Copy ID" on a finished row and paste the Bunny video ID where I need it.
+### S-006 Copy the video ID
+As the user, I click the video ID on a row (or choose Copy ID from its context menu) and paste it where I need it.
 Screens: main-finished, main-row-menu
 Depends: S-003
 Acceptance:
-- [snap] A done row shows the video ID (shortened in the middle) and a "Copy ID" button.
-- [self] After Copy ID the pasteboard holds exactly the GUID.
-- [snap] The row's context menu offers Copy ID and Copy Embed Link (`https://player.mediadelivery.net/embed/{libraryId}/{videoId}`).
+- [snap] As soon as the video exists, the row shows "Video ID" and the ID (shortened in the middle) with a copy icon.
+- [self] One click on the ID puts exactly the GUID on the pasteboard; the icon turns into a checkmark with "Copied" for 1.5 s.
+- [snap] The row's context menu offers Copy ID whenever the row has a video ID, and Copy Embed Link (`https://player.mediadelivery.net/embed/{libraryId}/{videoId}`) on done rows.
 UX:
-- Flow: done row -> Copy ID button, context menu Copy ID or Copy Embed Link, or Command-C on the selected row (S-020) -> the button briefly turns into a checkmark "Copied"
-- Surface: inline button in the row (acts on one thing already on screen), same actions in the context menu
-- States: before done: no Copy ID, the video ID shows as soon as it exists (from "Creating video" on) in secondary text; done: button visible; copied: checkmark for 1.5 s, layout does not shift
-- Words: "Copy ID", "Copy Embed Link", "Copied"; tooltip on the ID text shows the full video ID; tooltip on the button "Copy the video ID to the clipboard (⌘C)"
-- Access: VoiceOver reads "Copy ID, button" and announces "Copied"; the ID is selectable text
-Note: [unit] lines pass; [snap] and [manual] lines need a check in the running app.
-Status: doing
+- Flow: click the ID, or right-click the row and choose Copy ID, or Command-C on the selected row (S-020) -> "Copied" for 1.5 s
+- Surface: the ID itself is the control (pointing-hand cursor), the same action in the context menu
+- Words: "Video ID", tooltip "Click to copy the video ID: <ID>", "Copy ID", "Copied", "Copy Embed Link"
+- Access: VoiceOver reads "Copy ID" with the ID as value and announces "Copied"
+Status: done
 
 ### S-007 Retry a failed or cancelled upload
 As the user, I press "Retry" on a failed or cancelled row and the same file uploads again into the same Bunny video.
@@ -113,14 +109,15 @@ Acceptance:
 - [snap] Failed and cancelled rows show a Retry button; done rows do not.
 - [unit] Retry of a failed or interrupted row reuses its video ID, so Bunny gets no duplicate video; a cancelled row has none (S-014) and gets a new one.
 - [unit] Retry of a file that no longer exists shows "File not found" instead of starting.
+- [unit] Retry of a row whose video Bunny already has (status 1 or higher) marks it Done without uploading; a video that is gone (404) is replaced by a new one.
+- [snap] A failed row's error text can be selected, and the context menu has "Copy Error Message".
 UX:
 - Flow: failed, cancelled, or interrupted row -> Retry button, context menu Retry, or Command-R -> same row goes back to "Uploading" at 0 % (or the resumed offset after S-013); Cancel undoes it
 - Surface: inline button in the row, replacing nothing; Remove stays beside it
 - States: failed row shows "Failed" plus the reason on its own line (truncated, full text in the tooltip); missing file: "The file was moved or deleted. Drop it again to upload." and no Retry
 - Words: "Retry"; tooltip "Upload this file again into the same video (⌘R)"; state label "Failed" replaces today's "Error: …"; "Remove" tooltip "Remove from the list. The video stays in Bunny."
 - Access: Retry is reachable by Tab and Command-R; failed rows have an icon, not only red
-Note: [unit] lines pass; [snap] and [manual] lines need a check in the running app.
-Status: doing
+Status: done
 
 ### S-008 Keep the upload list after a restart
 As the user, I quit and reopen the app and still see what I uploaded today, with video IDs.
@@ -178,6 +175,7 @@ Depends: S-003
 Acceptance:
 - [snap] The alert names how many uploads are running and offers "Quit" and "Keep Uploading" (default).
 - [unit] With no active uploads the app quits without asking.
+- [unit] An upload whose final request already went out does not count: Bunny finishes it without the app, and the row loads as Done after the next launch.
 UX:
 - Flow: Command-Q or Quit from the menu with running uploads -> alert -> Return keeps uploading; Quit stops them without Cancel, so their videos stay in Bunny and the rows load as Interrupted
 - Surface: alert (a problem people must act on right now)
@@ -219,6 +217,7 @@ Acceptance:
 - [unit] When the upload ends the row is Done at once (Copy ID works) and shows "Bunny processing" beside it; it polls Get Video every 10 s until status 4 (Ready to play), 5 or 6 (failed), or 2 hours after the upload ended.
 - [snap] A processed row shows "Ready to play"; a Bunny failure shows "Bunny could not process the video".
 - [unit] The notification and Dock badge fire when the upload ends, not when processing ends.
+- [unit] The upload ends as soon as Bunny takes the video over (status 1 or higher, checked every 2 s while the final request is pending), not when Bunny answers the final request, which takes minutes for large files.
 - [unit] Rows still processing at quit are checked again after launch; Remove and Clear Finished stop the checks.
 - [self] `--fault-test --video <file>` uploads a real short video and follows its status against the real library.
 UX:

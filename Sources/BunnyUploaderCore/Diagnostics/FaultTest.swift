@@ -48,12 +48,158 @@ public enum FaultTest {
         do {
             let videos = try await BunnyAPIClient(credentials: credentials).listRecentVideos(count: 15)
             for video in videos {
-                let fields = ["dateUploaded", "status", "encodeProgress", "storageSize", "length", "width", "height"]
+                let fields = ["guid", "dateUploaded", "status", "encodeProgress", "storageSize", "length", "width", "height"]
                 log(fields.map { "\($0)=\(video[$0].map { "\($0)" } ?? "-")" }.joined(separator: " "))
             }
         } catch {
             log("error: \(error.localizedDescription)")
         }
+    }
+
+    /// Prints status and stored bytes of one video (no title).
+    public static func printVideoStatus(guid: String, log: @escaping @Sendable (String) -> Void) async {
+        let credentials = KeychainStore.load()
+        do {
+            let info = try await BunnyAPIClient(credentials: credentials).getVideoStorage(guid: guid)
+            log("\(guid): status \(info.status), storageSize \(info.storageSize)")
+        } catch {
+            log("\(guid): \(error.localizedDescription)")
+        }
+    }
+
+    /// Deletes a test video left behind by these diagnostics. Refuses any video whose
+    /// title does not start with "Bunny Uploader ", so real videos are never touched.
+    public static func deleteTestVideo(guid: String, log: @escaping @Sendable (String) -> Void) async -> Bool {
+        let credentials = KeychainStore.load()
+        guard credentials.isComplete else {
+            log("no credentials saved in Settings")
+            return false
+        }
+        let api = BunnyAPIClient(credentials: credentials)
+        do {
+            let recent = try await api.listRecentVideos(count: 100)
+            guard let video = recent.first(where: { ($0["guid"] as? String) == guid }) else {
+                log("refused: \(guid) is not among the 100 newest videos")
+                return false
+            }
+            guard (video["title"] as? String)?.hasPrefix("Bunny Uploader ") == true else {
+                log("refused: \(guid) is not a test video")
+                return false
+            }
+            try await api.deleteVideo(guid: guid)
+            log("deleted test video \(guid)")
+            return true
+        } catch {
+            log("could not delete \(guid): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Does Bunny finish the concatenation when the client drops the final request?
+    /// Uploads all parts of a zero-filled file, sends `Upload-Concat: final` with a
+    /// `detachAfter` timeout, then watches the video's status and stored bytes.
+    public static func probeFinalDetach(
+        sizeMB: Int = 512,
+        partCount: Int = 32,
+        detachAfter: TimeInterval = 3,
+        watch: TimeInterval = 600,
+        log: @escaping @Sendable (String) -> Void
+    ) async -> Bool {
+        let credentials = KeychainStore.load()
+        guard credentials.isComplete else {
+            log("no credentials saved in Settings")
+            return false
+        }
+        let api = BunnyAPIClient(credentials: credentials)
+        let size = Int64(sizeMB) * 1024 * 1024
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("bunny-final-probe-\(UUID().uuidString).mp4")
+        FileManager.default.createFile(atPath: file.path, contents: nil)
+        if let handle = try? FileHandle(forWritingTo: file) {
+            try? handle.truncate(atOffset: UInt64(size))
+            try? handle.close()
+        }
+        defer { try? FileManager.default.removeItem(at: file) }
+
+        var videoId: String?
+        var detachedOK = false
+        do {
+            let guid = try await api.createVideo(title: "Bunny Uploader final probe (safe to delete)")
+            videoId = guid
+            let collector = Collector()
+            let uploader = ParallelTUSUploader()
+            let started = Date()
+            do {
+                _ = try await uploader.upload(
+                    fileURL: file,
+                    fileSize: size,
+                    partCount: partCount,
+                    authHeaders: headers(credentials, guid),
+                    metadata: ["title": "final probe", "filetype": "video/mp4"],
+                    onPartCreated: { collector.add($0, $1) },
+                    onProgress: { bytes in
+                        if bytes >= size {
+                            uploader.cancel()
+                        }
+                    }
+                )
+            } catch {
+                // Expected: cancelled right before the final request.
+            }
+            let parts = collector.parts
+            log("probe: \(sizeMB) MB in \(parts.count) parts uploaded in \(Int(Date().timeIntervalSince(started))) s")
+            guard parts.count == partCount else {
+                log("probe: FAIL, only \(parts.count) part URLs")
+                return false
+            }
+
+            let config = URLSessionConfiguration.ephemeral
+            config.timeoutIntervalForRequest = detachAfter
+            let session = URLSession(configuration: config)
+            var request = URLRequest(url: URL(string: "https://video.bunnycdn.com/tusupload")!)
+            request.httpMethod = "POST"
+            request.setValue("1.0.0", forHTTPHeaderField: "Tus-Resumable")
+            let ordered = (0..<partCount).compactMap { parts[$0]?.absoluteString }
+            request.setValue("final;" + ordered.joined(separator: " "), forHTTPHeaderField: "Upload-Concat")
+            request.setValue(ParallelTUSUploader.encodeMetadata(["title": "final probe", "filetype": "video/mp4"]), forHTTPHeaderField: "Upload-Metadata")
+            for (key, value) in headers(credentials, guid) {
+                request.setValue(value, forHTTPHeaderField: key)
+            }
+            let sent = Date()
+            do {
+                let (_, response) = try await session.data(for: request)
+                log("probe: FINAL answered HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0) in \(String(format: "%.1f", Date().timeIntervalSince(sent))) s (before the detach timeout)")
+            } catch {
+                log("probe: FINAL dropped by the client after \(String(format: "%.1f", Date().timeIntervalSince(sent))) s (\((error as? URLError)?.code.rawValue ?? 0))")
+            }
+            session.invalidateAndCancel()
+
+            var last: (Int, Int64)?
+            while Date().timeIntervalSince(sent) < watch {
+                if let info = try? await api.getVideoStorage(guid: guid), last.map({ $0 != (info.status, info.storageSize) }) ?? true {
+                    last = (info.status, info.storageSize)
+                    log("probe: +\(Int(Date().timeIntervalSince(sent))) s status \(info.status), storageSize \(info.storageSize)")
+                    if info.status >= 1 {
+                        detachedOK = true
+                        break
+                    }
+                }
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+            }
+            log(detachedOK
+                ? "probe: RESULT Bunny finished the concatenation without the client"
+                : "probe: RESULT video stayed at status 0 for \(Int(watch)) s; Bunny did not finish without the client")
+        } catch {
+            log("probe: error \(error.localizedDescription)")
+        }
+        if let videoId {
+            do {
+                try await api.deleteVideo(guid: videoId)
+                log("probe: deleted test video \(videoId)")
+            } catch {
+                log("probe: WARN could not delete test video \(videoId): \(error.localizedDescription)")
+            }
+        }
+        return detachedOK
     }
 
     public static func run(
@@ -80,7 +226,7 @@ public enum FaultTest {
         do {
             let retryVideo = try await api.createVideo(title: "Bunny Uploader fault test (retry)")
             videos.append(retryVideo)
-            passed = await checkRetry(videoId: retryVideo, file: file, credentials: credentials, options: options, configuration: tusConfiguration, log: log) && passed
+            passed = await checkRetry(videoId: retryVideo, file: file, credentials: credentials, options: options, configuration: tusConfiguration, api: api, log: log) && passed
 
             let resumeVideo = try await api.createVideo(title: "Bunny Uploader fault test (resume)")
             videos.append(resumeVideo)
@@ -116,6 +262,7 @@ public enum FaultTest {
         credentials: Credentials,
         options: Options,
         configuration: URLSessionConfiguration,
+        api: BunnyAPIClient,
         log: @escaping @Sendable (String) -> Void
     ) async -> Bool {
         let state = FaultInjectingURLProtocol.state
@@ -132,6 +279,10 @@ public enum FaultTest {
                 authHeaders: headers(credentials, videoId),
                 metadata: ["title": "fault test", "filetype": "video/mp4"],
                 resign: UploadEngine.signer(credentials: credentials, videoId: videoId),
+                finalAccepted: {
+                    guard let status = try? await api.getVideoStatus(guid: videoId) else { return false }
+                    return status >= 1
+                },
                 onProgress: { _ in }
             )
             let injected = state.injected

@@ -55,7 +55,6 @@
 "Video ID" = "Videóazonosító";
 "Copy ID" = "Azonosító másolása";
 "Copied" = "Másolva";
-"Copy the video ID to the clipboard" = "A videóazonosító másolása a vágólapra";
 "Copy Embed Link" = "Beágyazási link másolása";
 "Checking…" = "Ellenőrzés…";
 "Interrupted" = "Megszakadt";
@@ -86,3 +85,5 @@
 "Unable to load collections." = "A gyűjtemények betöltése nem sikerült.";
 "Try Again" = "Újra";
 "The saved collection no longer exists. New uploads go to the library without a collection." = "A mentett gyűjtemény már nem létezik. Az új feltöltések gyűjtemény nélkül kerülnek a könyvtárba.";
+"Click to copy the video ID: %@" = "Kattintson a videóazonosító másolásához: %@";
+"Copy Error Message" = "Hibaüzenet másolása";

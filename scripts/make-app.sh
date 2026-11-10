@@ -6,13 +6,20 @@ cd "$(dirname "$0")/.."
 
 CONFIG="${1:-release}"
 APP_NAME="BunnyUploader"
-BUNDLE_ID="${BUNNY_BUNDLE_ID:-net.bunnyuploader.BunnyUploader}"
+DEFAULT_BUNDLE_ID="net.bunnyuploader.BunnyUploader"
+BUNDLE_ID="${BUNNY_BUNDLE_ID:-$DEFAULT_BUNDLE_ID}"
+# A different bundle id gets its own Keychain item, settings, and Application Support folder.
+DISPLAY_NAME="${BUNNY_DISPLAY_NAME:-Bunny Stream Uploader}"
 
 echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG"
 
 BIN_PATH="$(swift build -c "$CONFIG" --show-bin-path)/$APP_NAME"
-APP_DIR="$APP_NAME.app"
+APP_DIR="${BUNNY_APP_DIR:-$APP_NAME.app}"
+case "$APP_DIR" in
+    *.app) ;;
+    *) echo "BUNNY_APP_DIR must end with .app: $APP_DIR" >&2; exit 1 ;;
+esac
 MACOS_DIR="$APP_DIR/Contents/MacOS"
 
 RESOURCES_DIR="$APP_DIR/Contents/Resources"
@@ -38,7 +45,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key><string>$APP_NAME</string>
-    <key>CFBundleDisplayName</key><string>Bunny Stream Uploader</string>
+    <key>CFBundleDisplayName</key><string>$DISPLAY_NAME</string>
     <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
     <key>CFBundleExecutable</key><string>$APP_NAME</string>
     <key>CFBundlePackageType</key><string>APPL</string>
@@ -104,9 +111,12 @@ fi
 
 if [ -n "$SIGN_IDENTITY" ]; then
     echo "==> signing ($SIGN_IDENTITY)"
-    codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR" >/dev/null 2>&1 \
-        && echo "    signed" \
-        || echo "    signing failed, falling back to ad-hoc" && codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1
+    if codesign --force --deep --sign "$SIGN_IDENTITY" "$APP_DIR" >/dev/null 2>&1; then
+        echo "    signed"
+    else
+        echo "    signing failed, falling back to ad-hoc"
+        codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1
+    fi
 else
     echo "==> no signing identity found — ad-hoc signing"
     codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 && echo "    ad-hoc signed"
@@ -114,8 +124,13 @@ fi
 
 # Registrace do LaunchServices — aby Finder nabídl "Otevřít v aplikaci → BunnyUploader" pro mp4/mov.
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
-if [ -x "$LSREGISTER" ]; then
-    "$LSREGISTER" -f "$(pwd)/$APP_DIR" >/dev/null 2>&1 && echo "==> zaregistrováno v LaunchServices"
+case "$APP_DIR" in
+    /*) APP_PATH="$APP_DIR" ;;
+    *) APP_PATH="$(pwd)/$APP_DIR" ;;
+esac
+# Only the main app registers (Finder "Open with" and the Quick Action); a test build stays out.
+if [ -x "$LSREGISTER" ] && [ "$BUNDLE_ID" = "$DEFAULT_BUNDLE_ID" ]; then
+    "$LSREGISTER" -f "$APP_PATH" >/dev/null 2>&1 && echo "==> zaregistrováno v LaunchServices"
 fi
 
 echo "==> hotovo: $APP_DIR"

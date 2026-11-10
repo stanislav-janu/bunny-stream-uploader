@@ -2,8 +2,17 @@ import Foundation
 
 /// URLProtocol that returns canned responses, for testing networking without a server.
 final class MockURLProtocol: URLProtocol {
+    typealias Handler = (URLRequest) throws -> (Int, Data, [String: String])
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _handler: Handler?
+
     /// Handler invoked for each request: return (status code, body, response headers).
-    nonisolated(unsafe) static var handler: ((URLRequest) throws -> (Int, Data, [String: String]))?
+    /// Guarded by a lock: requests of a finished test can still arrive on other threads.
+    static var handler: Handler? {
+        get { lock.withLock { _handler } }
+        set { lock.withLock { _handler = newValue } }
+    }
 
     static func reset() {
         handler = nil

@@ -20,7 +20,7 @@ public struct Credentials: Equatable, Sendable {
 /// (one keychain access = one possible authorization prompt).
 /// The API key is never logged or shown after entry.
 enum KeychainStore {
-    private static let service = "net.bunnyuploader.BunnyUploader"
+    private static let service = AppStorage.keychainService()
     private static let account = "bunny-credentials"
 
     static func load() -> Credentials {

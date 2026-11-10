@@ -230,6 +230,23 @@ public struct BunnyAPIClient {
         return (status, collectionId)
     }
 
+    /// Status and stored bytes of a video (diagnostics).
+    public func getVideoStorage(guid: String) async throws -> (status: Int, storageSize: Int64) {
+        let url = baseURL.appendingPathComponent("videos").appendingPathComponent(guid)
+        var request = URLRequest(url: url)
+        request.setValue(credentials.apiKey, forHTTPHeaderField: "AccessKey")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: request)
+        try Self.validate(response, data: data)
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let status = object["status"] as? Int
+        else {
+            throw APIError.decoding
+        }
+        let size = (object["storageSize"] as? NSNumber)?.int64Value ?? 0
+        return (status, size)
+    }
+
     private static func validate(_ response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else {
             throw APIError.decoding

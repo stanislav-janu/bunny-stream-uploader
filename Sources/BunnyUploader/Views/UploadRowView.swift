@@ -24,7 +24,8 @@ struct UploadRowView: View {
                 Text(message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
                     .help(message)
             }
 
@@ -131,36 +132,48 @@ struct UploadRowView: View {
             Text("Video ID")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
-            Text(videoId)
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .textSelection(.enabled)
-                .help(videoId)
-            Spacer()
-            if item.state == .done {
-                Button {
-                    copy(videoId)
-                } label: {
+            // The whole ID is the control: one click copies it.
+            Button {
+                copy(videoId)
+            } label: {
+                HStack(spacing: 4) {
+                    Text(videoId)
+                        .font(.caption.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        .font(.caption)
                     if copied {
-                        Label("Copied", systemImage: "checkmark")
-                    } else {
-                        Label("Copy ID", systemImage: "doc.on.doc")
+                        Text("Copied")
+                            .font(.caption)
                     }
                 }
-                .controlSize(.small)
-                .help("Copy the video ID to the clipboard")
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .foregroundStyle(copied ? Color.green : Color.secondary)
+            .help(Text("Click to copy the video ID: \(videoId)"))
+            .accessibilityLabel(Text("Copy ID"))
+            .accessibilityValue(Text(videoId))
+            .onHover { inside in
+                if inside {
+                    NSCursor.pointingHand.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            Spacer()
         }
     }
 
     @ViewBuilder
     private var contextMenuItems: some View {
-        if let videoId = item.videoId, item.state == .done {
+        if let videoId = item.videoId {
             Button("Copy ID") {
                 copy(videoId)
             }
+        }
+        if item.videoId != nil, item.state == .done {
             if let link = item.embedLink {
                 Button("Copy Embed Link") {
                     Self.writeToPasteboard(link)
@@ -171,7 +184,14 @@ struct UploadRowView: View {
                     NSWorkspace.shared.open(playLink)
                 }
             }
+        }
+        if item.videoId != nil {
             Divider()
+        }
+        if let message = item.state.errorMessage {
+            Button("Copy Error Message") {
+                Self.writeToPasteboard(message)
+            }
         }
         if item.state.canRetry, item.fileExists, hasCredentials {
             Button("Retry") {

@@ -96,10 +96,7 @@ final class TUSUploader: NSObject, TUSClientDelegate {
     // MARK: - Storage
 
     private static func makeStorageDirectory() -> URL {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let dir = base
-            .appendingPathComponent("BunnyUploader", isDirectory: true)
-            .appendingPathComponent("tus", isDirectory: true)
+        let dir = AppStorage.supportDirectory().appendingPathComponent("tus", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }

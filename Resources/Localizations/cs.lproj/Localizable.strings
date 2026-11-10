@@ -61,7 +61,6 @@
 "Video ID" = "ID videa";
 "Copy ID" = "Kopírovat ID";
 "Copied" = "Zkopírováno";
-"Copy the video ID to the clipboard" = "Zkopíruje ID videa do schránky";
 "Copy Embed Link" = "Kopírovat odkaz pro vložení";
 "Checking…" = "Ověřuje se…";
 "Interrupted" = "Přerušeno";
@@ -92,3 +91,5 @@
 "Unable to load collections." = "Kolekce se nepodařilo načíst.";
 "Try Again" = "Zkusit znovu";
 "The saved collection no longer exists. New uploads go to the library without a collection." = "Uložená kolekce už neexistuje. Nové uploady půjdou do knihovny bez kolekce.";
+"Click to copy the video ID: %@" = "Kliknutím zkopíruješ ID videa: %@";
+"Copy Error Message" = "Kopírovat chybovou zprávu";

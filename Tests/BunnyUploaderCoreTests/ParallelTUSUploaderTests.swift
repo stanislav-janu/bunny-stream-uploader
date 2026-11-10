@@ -144,10 +144,11 @@ final class ProgressBox: @unchecked Sendable {
     private let lock = NSLock()
     private var _value: Int64 = 0
     var value: Int64 {
-        lock.lock(); defer { lock.unlock() }
-        return _value
+        lock.withLock { _value }
     }
     func set(_ v: Int64) {
-        lock.lock(); _value = max(_value, v); lock.unlock()
+        lock.withLock {
+            _value = max(_value, v)
+        }
     }
 }

@@ -32,6 +32,15 @@ public final class UploadEngine: ObservableObject {
     /// Collection new uploads go into, per library (nil = none).
     @Published public private(set) var collection: BunnyAPIClient.Collection?
 
+    /// How often a pending final request checks whether Bunny took the video over (tests shorten it).
+    public var finalPollInterval: TimeInterval = 2
+
+    /// Running uploads that quitting would stop. An upload whose final request already
+    /// went out is not counted: Bunny finishes it without the app.
+    public var uploadsBlockingQuit: Int {
+        return items.filter { $0.state.isActive && !$0.finalSent }.count
+    }
+
     /// Backoff before each retry of a failed part request (tests shorten it).
     public var partRetryDelays: [TimeInterval] = ParallelTUSUploader.defaultRetryDelays
     /// Where checked credentials are stored. Tests replace it to keep off the Keychain.
@@ -315,6 +324,7 @@ public final class UploadEngine: ObservableObject {
         item.throughputMBps = 0
         item.finishedAt = nil
         item.processing = nil
+        item.finalSent = false
         samples[item.id] = nil
         item.state = .idle
         Task { await self.process(item) }
@@ -372,10 +382,33 @@ public final class UploadEngine: ObservableObject {
         // 1) Create Video, or reuse the one a retried upload already has.
         item.state = .creatingVideo
         recomputeAggregate()
+        var reusable: String?
+        if let existing = item.videoId, item.libraryId == credentials.libraryId {
+            reusable = existing
+            let client = BunnyAPIClient(credentials: credentials, session: apiSession)
+            do {
+                let status = try await client.getVideoStatus(guid: existing)
+                // Bunny already took the video over (status 1 or higher): an earlier final
+                // request reached it. Uploading again would only start over.
+                if status >= 1 {
+                    guard item.state == .creatingVideo else { return }
+                    item.state = .uploading
+                    handleSuccess(item)
+                    return
+                }
+            } catch BunnyAPIClient.APIError.http(404, _) {
+                // The video is gone from the library: upload into a new one.
+                reusable = nil
+                item.videoId = nil
+                item.resume = nil
+            } catch {
+                // Unknown (network): keep the video and let the upload find out.
+            }
+        }
         let guid: String
         var createdNow = false
-        if let existing = item.videoId, item.libraryId == credentials.libraryId {
-            guid = existing
+        if let reusable {
+            guid = reusable
         } else {
             createdNow = true
             let client = BunnyAPIClient(credentials: credentials, session: apiSession)
@@ -466,7 +499,13 @@ public final class UploadEngine: ObservableObject {
         partCount: Int,
         resumeParts: [Int: URL]
     ) async {
-        let uploader = ParallelTUSUploader(sessionConfiguration: parallelSessionConfiguration, retryDelays: partRetryDelays)
+        let uploader = ParallelTUSUploader(
+            sessionConfiguration: parallelSessionConfiguration,
+            retryDelays: partRetryDelays,
+            finalPollInterval: finalPollInterval
+        )
+        let statusClient = BunnyAPIClient(credentials: credentials, session: apiSession)
+        let videoId = headers["VideoId"] ?? ""
         parallelUploaders[item.id] = uploader
         let id = item.id
         do {
@@ -487,6 +526,16 @@ public final class UploadEngine: ObservableObject {
                     Task { @MainActor in
                         self?.savePart(item, index: index, url: url)
                     }
+                },
+                onFinalSent: { [weak self] in
+                    Task { @MainActor in
+                        self?.markFinalSent(item)
+                    }
+                },
+                finalAccepted: {
+                    // Bunny moves the video out of status 0 (Created) once it took it over.
+                    guard let status = try? await statusClient.getVideoStatus(guid: videoId) else { return false }
+                    return status >= 1
                 },
                 onProgress: { [weak self] bytes in
                     Task { @MainActor in
@@ -564,6 +613,12 @@ public final class UploadEngine: ObservableObject {
         item.bytesUploaded = bytes
         samples[item.id] = Sample(history: [(Date(), bytes)])
         recomputeAggregate()
+    }
+
+    private func markFinalSent(_ item: UploadItem) {
+        guard item.state == .uploading else { return }
+        item.finalSent = true
+        saveHistory()
     }
 
     /// Remembers a new part URL so Retry can continue this upload later.
