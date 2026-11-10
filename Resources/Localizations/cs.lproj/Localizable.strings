@@ -80,3 +80,15 @@
 "Uploads still running: %lld. If you quit now, they stop and you can retry them after the next launch." = "Běžících uploadů: %lld. Když teď aplikaci ukončíš, zastaví se a po dalším spuštění je můžeš zkusit znovu.";
 "Keep Uploading" = "Pokračovat v nahrávání";
 "Quit" = "Ukončit";
+
+/* After upload: processing, play page, collections */
+"Ready to play" = "Připraveno k přehrání";
+"Bunny could not process the video" = "Bunny video nedokázal zpracovat";
+"Bunny is transcoding the video. The video ID already works." = "Bunny video převádí. ID videa už funguje.";
+"Play in Browser" = "Přehrát v prohlížeči";
+"Collection" = "Kolekce";
+"New uploads go to" = "Nové uploady jdou do";
+"No collection" = "Bez kolekce";
+"Unable to load collections." = "Kolekce se nepodařilo načíst.";
+"Try Again" = "Zkusit znovu";
+"The saved collection no longer exists. New uploads go to the library without a collection." = "Uložená kolekce už neexistuje. Nové uploady půjdou do knihovny bez kolekce.";

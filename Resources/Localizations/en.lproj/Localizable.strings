@@ -80,3 +80,15 @@
 "Uploads still running: %lld. If you quit now, they stop and you can retry them after the next launch." = "Uploads still running: %lld. If you quit now, they stop and you can retry them after the next launch.";
 "Keep Uploading" = "Keep Uploading";
 "Quit" = "Quit";
+
+/* After upload: processing, play page, collections */
+"Ready to play" = "Ready to play";
+"Bunny could not process the video" = "Bunny could not process the video";
+"Bunny is transcoding the video. The video ID already works." = "Bunny is transcoding the video. The video ID already works.";
+"Play in Browser" = "Play in Browser";
+"Collection" = "Collection";
+"New uploads go to" = "New uploads go to";
+"No collection" = "No collection";
+"Unable to load collections." = "Unable to load collections.";
+"Try Again" = "Try Again";
+"The saved collection no longer exists. New uploads go to the library without a collection." = "The saved collection no longer exists. New uploads go to the library without a collection.";

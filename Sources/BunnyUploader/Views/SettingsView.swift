@@ -9,6 +9,16 @@ struct SettingsView: View {
     @State private var savedNote = false
     @State private var isChecking = false
     @State private var checkError: BunnyAPIClient.CredentialCheckError?
+    @State private var collections: [BunnyAPIClient.Collection] = []
+    @State private var collectionsState: CollectionsState = .idle
+    @State private var collectionGone = false
+
+    private enum CollectionsState {
+        case idle
+        case loading
+        case loaded
+        case failed
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -44,6 +54,11 @@ struct SettingsView: View {
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+
+            Divider()
+
+            // MARK: Collection
+            collectionSection
 
             Divider()
 
@@ -106,6 +121,7 @@ struct SettingsView: View {
         .onAppear {
             apiKey = engine.credentials.apiKey
             libraryId = engine.credentials.libraryId
+            loadCollections()
         }
         .onChange(of: apiKey) {
             clearResult()
@@ -122,6 +138,77 @@ struct SettingsView: View {
                 .font(.caption)
                 .foregroundStyle(.red)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var collectionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Collection")
+                .font(.headline)
+            HStack {
+                Picker("New uploads go to", selection: collectionBinding) {
+                    Text("No collection")
+                        .tag(String?.none)
+                    ForEach(pickerCollections) { collection in
+                        Text(collection.name)
+                            .tag(Optional(collection.id))
+                    }
+                }
+                .disabled(collectionsState != .loaded)
+                if collectionsState == .loading {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            if collectionsState == .failed {
+                HStack {
+                    Label("Unable to load collections.", systemImage: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.red)
+                    Button("Try Again") {
+                        loadCollections()
+                    }
+                    .controlSize(.small)
+                }
+                .font(.caption)
+            } else if collectionGone {
+                Text("The saved collection no longer exists. New uploads go to the library without a collection.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// Loaded collections, plus the saved one while the list is not loaded yet.
+    private var pickerCollections: [BunnyAPIClient.Collection] {
+        if collectionsState != .loaded, let saved = engine.collection {
+            return [saved]
+        }
+        return collections
+    }
+
+    private var collectionBinding: Binding<String?> {
+        Binding(
+            get: { engine.collection?.id },
+            set: { id in
+                engine.setCollection(collections.first { $0.id == id })
+                collectionGone = false
+            }
+        )
+    }
+
+    private func loadCollections() {
+        guard engine.hasCredentials else { return }
+        collectionsState = .loading
+        Task {
+            do {
+                let result = try await engine.loadCollections()
+                collections = result.collections
+                collectionGone = result.savedCollectionGone
+                collectionsState = .loaded
+            } catch {
+                collectionsState = .failed
+            }
         }
     }
 
@@ -142,6 +229,9 @@ struct SettingsView: View {
             isChecking = false
             checkError = error
             savedNote = error == nil
+            if error == nil {
+                loadCollections()
+            }
             let announcement = error?.message ?? String(localized: "Saved")
             AccessibilityNotification.Announcement(announcement).post()
         }

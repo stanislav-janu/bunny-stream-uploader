@@ -87,3 +87,12 @@ Without opening a window, the binary reads the credentials from the Keychain and
 3. A second upload into the same video (what Retry does) succeeds even when it starts with an invalid signature (401, then a fresh one).
 
 Both videos are deleted at the end. The exit code is 0 for PASS and 1 for FAIL; details go to `debug.log`.
+
+## After the upload
+
+- The row is Done as soon as the final `Upload-Concat` succeeds. The engine then asks Get Video every 10 s for up to 2 hours: status 4 (Finished) shows "Ready to play", 5 (Error) and 6 (UploadFailed) show the failure, anything else stays "Bunny processing".
+- Bunny's queue decides when processing starts; a 6 s test clip stayed at status 2 for several minutes, while large 4K uploads in the same library reach status 4.
+- Links: embed `https://player.mediadelivery.net/embed/{libraryId}/{videoId}`, play page `https://player.mediadelivery.net/play/{libraryId}/{videoId}`.
+- Collections come from `GET /library/{libraryId}/collections`; the chosen `guid` goes into Create Video as `collectionId`. The choice is stored per library in user defaults.
+- `--fault-test --video <file>` also uploads a real short video into the first collection, checks that it landed there, and follows its status. `--recent-videos` prints status and encode progress of the newest videos (no titles, no keys).
+

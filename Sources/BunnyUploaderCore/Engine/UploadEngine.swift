@@ -24,6 +24,14 @@ public final class UploadEngine: ObservableObject {
     /// Injection points for tests (mock URLProtocol). Default to production behavior.
     public var apiSession: URLSession = .shared
     public var parallelSessionConfiguration: URLSessionConfiguration?
+    /// How often and how long Done rows ask Bunny whether processing finished (tests shorten it).
+    public var processingPollInterval: TimeInterval = 10
+    public var processingTimeout: TimeInterval = 2 * 60 * 60
+    private var pollTasks: [UUID: Task<Void, Never>] = [:]
+
+    /// Collection new uploads go into, per library (nil = none).
+    @Published public private(set) var collection: BunnyAPIClient.Collection?
+
     /// Backoff before each retry of a failed part request (tests shorten it).
     public var partRetryDelays: [TimeInterval] = ParallelTUSUploader.defaultRetryDelays
     /// Where checked credentials are stored. Tests replace it to keep off the Keychain.
@@ -91,6 +99,61 @@ public final class UploadEngine: ObservableObject {
             // Interrupted rows are saved as such right away.
             saveHistory()
         }
+        collection = Self.loadCollection(libraryId: self.credentials.libraryId)
+    }
+
+    /// Starts polling for rows that were still processing at the last quit.
+    public func resumeProcessingChecks() {
+        for item in items where item.state == .done && item.processing == .processing {
+            startProcessingCheck(item)
+        }
+    }
+
+    // MARK: - Collection
+
+    private static func loadCollection(libraryId: String) -> BunnyAPIClient.Collection? {
+        let defaults = UserDefaults.standard
+        guard !libraryId.isEmpty,
+              defaults.string(forKey: "collectionLibraryId") == libraryId,
+              let id = defaults.string(forKey: "collectionId")
+        else {
+            return nil
+        }
+        return BunnyAPIClient.Collection(id: id, name: defaults.string(forKey: "collectionName") ?? id)
+    }
+
+    /// Sets the collection new uploads go into (nil = none), for the current library.
+    public func setCollection(_ new: BunnyAPIClient.Collection?) {
+        collection = new
+        let defaults = UserDefaults.standard
+        if let new {
+            defaults.set(new.id, forKey: "collectionId")
+            defaults.set(new.name, forKey: "collectionName")
+            defaults.set(credentials.libraryId, forKey: "collectionLibraryId")
+        } else {
+            defaults.removeObject(forKey: "collectionId")
+            defaults.removeObject(forKey: "collectionName")
+            defaults.removeObject(forKey: "collectionLibraryId")
+        }
+    }
+
+    /// The library's collections. A saved collection missing from the list falls back to none;
+    /// the result says so with `savedCollectionGone`.
+    public func loadCollections() async throws -> (collections: [BunnyAPIClient.Collection], savedCollectionGone: Bool) {
+        let client = BunnyAPIClient(credentials: credentials, session: apiSession)
+        let list = try await client.listCollections()
+        var gone = false
+        if let current = collection {
+            if let match = list.first(where: { $0.id == current.id }) {
+                if match.name != current.name {
+                    setCollection(match)
+                }
+            } else {
+                setCollection(nil)
+                gone = true
+            }
+        }
+        return (list, gone)
     }
 
     public var hasCredentials: Bool {
@@ -135,6 +198,7 @@ public final class UploadEngine: ObservableObject {
     public func saveCredentials(_ new: Credentials) {
         credentials = new
         persistCredentials(new)
+        collection = Self.loadCollection(libraryId: new.libraryId)
     }
 
     /// Checks the credentials with Bunny and stores them only when Bunny accepts them.
@@ -187,6 +251,7 @@ public final class UploadEngine: ObservableObject {
         items.removeAll { $0.state == .done }
         for item in removed {
             observers[item.id] = nil
+            stopProcessingCheck(item)
         }
         saveHistory()
         return removed
@@ -197,6 +262,9 @@ public final class UploadEngine: ObservableObject {
         for item in restored where !items.contains(where: { $0 === item }) {
             items.append(item)
             observe(item)
+            if item.state == .done, item.processing == .processing {
+                startProcessingCheck(item)
+            }
         }
         items.sort { ($0.finishedAt ?? .distantFuture) > ($1.finishedAt ?? .distantFuture) }
         saveHistory()
@@ -224,6 +292,7 @@ public final class UploadEngine: ObservableObject {
     /// Removes a row. A video that never finished uploading is deleted in Bunny too;
     /// a done video stays there.
     public func removeItem(_ item: UploadItem) {
+        stopProcessingCheck(item)
         cancelUpload(item)
         if item.state != .done, item.state != .processing {
             discardVideo(item)
@@ -245,6 +314,7 @@ public final class UploadEngine: ObservableObject {
         item.bytesUploaded = 0
         item.throughputMBps = 0
         item.finishedAt = nil
+        item.processing = nil
         samples[item.id] = nil
         item.state = .idle
         Task { await self.process(item) }
@@ -310,7 +380,7 @@ public final class UploadEngine: ObservableObject {
             createdNow = true
             let client = BunnyAPIClient(credentials: credentials, session: apiSession)
             do {
-                guid = try await client.createVideo(title: item.fileName)
+                guid = try await client.createVideo(title: item.fileName, collectionId: collection?.id)
             } catch {
                 item.state = .error(error.localizedDescription)
                 recomputeAggregate()
@@ -352,7 +422,7 @@ public final class UploadEngine: ObservableObject {
         var threads = threadCount(for: item.fileSize)
         var useParallel = threads > 1 && item.fileSize >= parallelThresholdBytes
         var resumeParts: [Int: URL] = [:]
-        if !createdNow, let saved = item.resume, saved.matches(fileSize: item.fileSize, fileModified: modified) {
+        if !createdNow, let saved = item.resume, saved.isValid, saved.matches(fileSize: item.fileSize, fileModified: modified) {
             threads = saved.partCount
             useParallel = true
             resumeParts = saved.partURLs
@@ -508,30 +578,53 @@ public final class UploadEngine: ObservableObject {
         item.resume = nil
         item.bytesUploaded = item.fileSize
         item.throughputMBps = 0
-        item.state = .processing
+        item.processing = .processing
+        item.state = .done
         samples[item.id] = nil
         tusIds[item.id] = nil
         recomputeAggregate()
         onUploadFinished?(item)
-        // Optionally track transcoding status.
-        Task { await self.pollProcessing(item) }
+        startProcessingCheck(item)
     }
 
+    private func startProcessingCheck(_ item: UploadItem) {
+        pollTasks[item.id]?.cancel()
+        pollTasks[item.id] = Task { [weak self] in
+            await self?.pollProcessing(item)
+        }
+    }
+
+    private func stopProcessingCheck(_ item: UploadItem) {
+        pollTasks[item.id]?.cancel()
+        pollTasks[item.id] = nil
+    }
+
+    /// Asks Bunny every `processingPollInterval` until the video plays, fails, or
+    /// `processingTimeout` passes since the upload ended. Network errors just wait for the next ask.
     private func pollProcessing(_ item: UploadItem) async {
-        guard let guid = item.videoId else {
-            item.state = .done
+        defer { pollTasks[item.id] = nil }
+        guard let guid = item.videoId, item.libraryId == nil || item.libraryId == credentials.libraryId else {
+            item.processing = nil
+            saveHistory()
             return
         }
         let client = BunnyAPIClient(credentials: credentials, session: apiSession)
-        // A few attempts; Bunny status 3+ means done/playable.
-        for _ in 0..<3 {
-            try? await Task.sleep(nanoseconds: 2_000_000_000)
-            if let status = try? await client.getVideoStatus(guid: guid), status >= 3 {
-                item.state = .done
-                return
+        let deadline = (item.finishedAt ?? Date()).addingTimeInterval(processingTimeout)
+        while !Task.isCancelled, Date() < deadline {
+            if let status = try? await client.getVideoStatus(guid: guid) {
+                let result = BunnyAPIClient.processing(forStatus: status)
+                if result != .processing {
+                    item.processing = result
+                    saveHistory()
+                    return
+                }
             }
+            try? await Task.sleep(nanoseconds: UInt64(processingPollInterval * 1_000_000_000))
         }
-        // Processing continues on Bunny's side; for the user the upload is done.
-        item.state = .done
+        if !Task.isCancelled {
+            // Gave up asking; the video may still finish in Bunny.
+            item.processing = nil
+            saveHistory()
+        }
     }
 }

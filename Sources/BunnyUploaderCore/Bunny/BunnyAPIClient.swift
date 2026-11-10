@@ -89,19 +89,66 @@ public struct BunnyAPIClient {
 
     /// Embed player link for a video in a library.
     public static func embedLink(libraryId: String, videoId: String) -> String {
-        return "https://iframe.mediadelivery.net/embed/\(libraryId)/\(videoId)"
+        return "https://player.mediadelivery.net/embed/\(libraryId)/\(videoId)"
+    }
+
+    /// Bunny's own play page for a video.
+    public static func playLink(libraryId: String, videoId: String) -> String {
+        return "https://player.mediadelivery.net/play/\(libraryId)/\(videoId)"
+    }
+
+    /// A collection in the library.
+    public struct Collection: Equatable, Sendable, Identifiable {
+        public let id: String
+        public let name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    /// The library's collections, sorted by name (`GET /library/{libraryId}/collections`).
+    public func listCollections() async throws -> [Collection] {
+        var components = URLComponents(url: baseURL.appendingPathComponent("collections"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "page", value: "1"),
+            URLQueryItem(name: "itemsPerPage", value: "1000"),
+            URLQueryItem(name: "orderBy", value: "title"),
+        ]
+        var request = URLRequest(url: components.url!)
+        request.httpMethod = "GET"
+        request.setValue(credentials.apiKey, forHTTPHeaderField: "AccessKey")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
+        let (data, response) = try await session.data(for: request)
+        try Self.validate(response, data: data)
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw APIError.decoding
+        }
+        let items = object["items"] as? [[String: Any]] ?? []
+        return items
+            .compactMap { item -> Collection? in
+                guard let guid = item["guid"] as? String, !guid.isEmpty else { return nil }
+                return Collection(id: guid, name: item["name"] as? String ?? guid)
+            }
+            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     /// Creates a video object and returns its guid (videoId).
     /// `POST /library/{libraryId}/videos` with the `AccessKey` header.
-    public func createVideo(title: String) async throws -> String {
+    public func createVideo(title: String, collectionId: String? = nil) async throws -> String {
         let url = baseURL.appendingPathComponent("videos")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(credentials.apiKey, forHTTPHeaderField: "AccessKey")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["title": title])
+        var body = ["title": title]
+        if let collectionId, !collectionId.isEmpty {
+            body["collectionId"] = collectionId
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
         try Self.validate(response, data: data)
@@ -113,6 +160,25 @@ public struct BunnyAPIClient {
             throw APIError.missingGuid
         }
         return guid
+    }
+
+    /// The newest videos in the library as raw JSON objects (diagnostics only).
+    public func listRecentVideos(count: Int = 10) async throws -> [[String: Any]] {
+        var components = URLComponents(url: baseURL.appendingPathComponent("videos"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "page", value: "1"),
+            URLQueryItem(name: "itemsPerPage", value: String(count)),
+            URLQueryItem(name: "orderBy", value: "date"),
+        ]
+        var request = URLRequest(url: components.url!)
+        request.setValue(credentials.apiKey, forHTTPHeaderField: "AccessKey")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let (data, response) = try await session.data(for: request)
+        try Self.validate(response, data: data)
+        guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw APIError.decoding
+        }
+        return object["items"] as? [[String: Any]] ?? []
     }
 
     /// Deletes a video (`DELETE /library/{libraryId}/videos/{guid}`).
@@ -127,9 +193,25 @@ public struct BunnyAPIClient {
         try Self.validate(response, data: data)
     }
 
+    /// What Bunny's video `status` means for the person: 4 (Finished) plays,
+    /// 5 (Error) and 6 (UploadFailed) failed, everything else is still processing.
+    public static func processing(forStatus status: Int) -> BunnyProcessing {
+        switch status {
+        case 4: return .ready
+        case 5, 6: return .failed
+        default: return .processing
+        }
+    }
+
     /// Video status (e.g. to track transcoding after the upload completes).
-    /// Returns Bunny's `status` code (0 = created, 3/4 = processing, 4 = ready ...).
+    /// Returns Bunny's `status` code: 0 Created, 1 Uploaded, 2 Processing, 3 Transcoding,
+    /// 4 Finished, 5 Error, 6 UploadFailed, 7 JitSegmenting, 8 JitPlaylistsCreated.
     public func getVideoStatus(guid: String) async throws -> Int {
+        return try await getVideoInfo(guid: guid).status
+    }
+
+    /// Status and collection of a video (`GET /library/{libraryId}/videos/{guid}`).
+    public func getVideoInfo(guid: String) async throws -> (status: Int, collectionId: String?) {
         let url = baseURL.appendingPathComponent("videos").appendingPathComponent(guid)
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -144,7 +226,8 @@ public struct BunnyAPIClient {
         else {
             throw APIError.decoding
         }
-        return status
+        let collectionId = (object["collectionId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return (status, collectionId)
     }
 
     private static func validate(_ response: URLResponse, data: Data) throws {

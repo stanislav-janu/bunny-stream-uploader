@@ -107,6 +107,9 @@ struct UploadRowView: View {
             }
             .font(.caption)
             .foregroundStyle(statusColor)
+            if item.state == .done, let processing = item.processing {
+                processingLabel(processing)
+            }
             Spacer()
             if item.state == .uploading {
                 Text(String(format: "%.1f MB/s", item.throughputMBps))
@@ -163,6 +166,11 @@ struct UploadRowView: View {
                     Self.writeToPasteboard(link)
                 }
             }
+            if let playLink = item.playLink {
+                Button("Play in Browser") {
+                    NSWorkspace.shared.open(playLink)
+                }
+            }
             Divider()
         }
         if item.state.canRetry, item.fileExists, hasCredentials {
@@ -180,6 +188,24 @@ struct UploadRowView: View {
                 onRemove()
             }
         }
+    }
+
+    private func processingLabel(_ processing: BunnyProcessing) -> some View {
+        Label {
+            Text(processing.label)
+        } icon: {
+            switch processing {
+            case .processing:
+                Image(systemName: "hourglass")
+            case .ready:
+                Image(systemName: "play.circle.fill")
+            case .failed:
+                Image(systemName: "exclamationmark.triangle.fill")
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(processing == .failed ? Color.red : Color.secondary)
+        .help(processing == .processing ? Text("Bunny is transcoding the video. The video ID already works.") : Text(processing.label))
     }
 
     // MARK: - Helpers

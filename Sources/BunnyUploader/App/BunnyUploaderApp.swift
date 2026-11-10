@@ -84,6 +84,9 @@ struct BunnyUploaderApp: App {
         if CommandLine.arguments.contains("--fault-test") {
             FaultTestCommand.runAndExit()
         }
+        if CommandLine.arguments.contains("--recent-videos") {
+            FaultTestCommand.listRecentAndExit()
+        }
     }
 
     var body: some Scene {
@@ -99,6 +102,7 @@ struct BunnyUploaderApp: App {
                     }
                     appDelegate.flushPending()
                     appDelegate.activeUploads = { engine.activeCount }
+                    engine.resumeProcessingChecks()
                     // Wire UI side-effects the Core engine intentionally does not depend on.
                     engine.onUploadFinished = { item in
                         Notifications.uploadFinished(fileName: item.fileName)
@@ -131,7 +135,12 @@ enum FaultTestCommand {
         let done = DispatchSemaphore(value: 0)
         let result = ResultBox()
         Task.detached {
-            let passed = await FaultTest.runWithStoredCredentials { line in
+            var options = FaultTest.Options()
+            let arguments = CommandLine.arguments
+            if let index = arguments.firstIndex(of: "--video"), index + 1 < arguments.count {
+                options.realVideo = URL(fileURLWithPath: arguments[index + 1])
+            }
+            let passed = await FaultTest.runWithStoredCredentials(options: options) { line in
                 print(line)
                 fflush(stdout)
             }
@@ -140,6 +149,20 @@ enum FaultTestCommand {
         }
         done.wait()
         exit(result.passed ? 0 : 1)
+    }
+
+    /// `BunnyUploader --recent-videos`: prints the newest videos with status and encode progress.
+    static func listRecentAndExit() -> Never {
+        let done = DispatchSemaphore(value: 0)
+        Task.detached {
+            await FaultTest.printRecentVideos { line in
+                print(line)
+                fflush(stdout)
+            }
+            done.signal()
+        }
+        done.wait()
+        exit(0)
     }
 
     private final class ResultBox: @unchecked Sendable {

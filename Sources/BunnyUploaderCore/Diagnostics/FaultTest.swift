@@ -6,6 +6,9 @@ import Foundation
 /// 2. Resume: an upload cancelled midway must continue from its saved parts.
 /// 3. Re-upload: a second full upload into the same video (what Retry does) must succeed.
 ///    It starts with an invalid signature, so Bunny's 401 must lead to a fresh one.
+/// 4. API (with `--video <file>`): the collection list loads; a real video uploaded into the
+///    first collection lands there and reaches Ready to play (status 4) or is still processing
+///    when `processingWait` ends (Bunny's queue can be slow; that is reported, not failed).
 /// Both test videos are deleted at the end. Run with `BunnyUploader --fault-test`.
 public enum FaultTest {
     public struct Options: Sendable {
@@ -15,6 +18,11 @@ public enum FaultTest {
         public var retryDelays: [TimeInterval] = [0, 1, 2, 3, 5, 8]
         /// Fraction of the file uploaded before the resume check cancels.
         public var cancelAt = 0.4
+        /// How long to wait for Bunny to give up on the zero-filled video.
+        public var processingWait: TimeInterval = 120
+        public var processingPollInterval: TimeInterval = 5
+        /// A short real video for the processing check; without it the check only lists collections.
+        public var realVideo: URL?
 
         public init() {}
     }
@@ -27,6 +35,25 @@ public enum FaultTest {
             return false
         }
         return await run(credentials: credentials, options: options, log: log)
+    }
+
+    /// Prints the newest videos with status, encode progress, size, and upload date
+    /// (no keys, no titles).
+    public static func printRecentVideos(log: @escaping @Sendable (String) -> Void) async {
+        let credentials = KeychainStore.load()
+        guard credentials.isComplete else {
+            log("no credentials saved in Settings")
+            return
+        }
+        do {
+            let videos = try await BunnyAPIClient(credentials: credentials).listRecentVideos(count: 15)
+            for video in videos {
+                let fields = ["dateUploaded", "status", "encodeProgress", "storageSize", "length", "width", "height"]
+                log(fields.map { "\($0)=\(video[$0].map { "\($0)" } ?? "-")" }.joined(separator: " "))
+            }
+        } catch {
+            log("error: \(error.localizedDescription)")
+        }
     }
 
     public static func run(
@@ -60,6 +87,8 @@ public enum FaultTest {
             passed = await checkResume(videoId: resumeVideo, file: file, credentials: credentials, options: options, configuration: tusConfiguration, log: log) && passed
 
             passed = await checkReupload(videoId: retryVideo, file: file, credentials: credentials, options: options, configuration: tusConfiguration, log: log) && passed
+
+            passed = await checkAPI(api: api, credentials: credentials, options: options, configuration: tusConfiguration, videos: &videos, log: log) && passed
         } catch {
             log("FAIL: \(error.localizedDescription)")
             passed = false
@@ -255,6 +284,84 @@ public enum FaultTest {
             log("FAIL re-upload check: \(error.localizedDescription)")
             return false
         }
+    }
+
+    static func checkAPI(
+        api: BunnyAPIClient,
+        credentials: Credentials,
+        options: Options,
+        configuration: URLSessionConfiguration,
+        videos: inout [String],
+        log: @escaping @Sendable (String) -> Void
+    ) async -> Bool {
+        let collections: [BunnyAPIClient.Collection]
+        do {
+            collections = try await api.listCollections()
+            log("api check: collection list loaded, \(collections.count) collections")
+        } catch {
+            log("FAIL api check: collection list: \(error.localizedDescription)")
+            return false
+        }
+        guard let realVideo = options.realVideo else {
+            log("api check: no --video given, skipping the processing check")
+            return true
+        }
+        let size = (try? realVideo.resourceValues(forKeys: [.fileSizeKey]).fileSize).map(Int64.init) ?? 0
+        guard size > 0 else {
+            log("FAIL api check: cannot read \(realVideo.path)")
+            return false
+        }
+        let collection = collections.first
+        let videoId: String
+        do {
+            videoId = try await api.createVideo(title: "Bunny Uploader fault test (processing)", collectionId: collection?.id)
+            videos.append(videoId)
+            FaultInjectingURLProtocol.state.faults = FaultInjectingURLProtocol.Faults()
+            let uploader = ParallelTUSUploader(sessionConfiguration: configuration)
+            _ = try await uploader.upload(
+                fileURL: realVideo,
+                fileSize: size,
+                partCount: 2,
+                authHeaders: headers(credentials, videoId),
+                metadata: ["title": "fault test", "filetype": "video/mp4"],
+                onProgress: { _ in }
+            )
+        } catch {
+            log("FAIL api check: upload of the real video: \(error.localizedDescription)")
+            return false
+        }
+        let start = Date()
+        var statuses: [Int] = []
+        var collectionId: String?
+        while Date().timeIntervalSince(start) < options.processingWait {
+            if let info = try? await api.getVideoInfo(guid: videoId) {
+                collectionId = info.collectionId
+                if statuses.last != info.status {
+                    statuses.append(info.status)
+                }
+                if BunnyAPIClient.processing(forStatus: info.status) != .processing {
+                    break
+                }
+            }
+            try? await Task.sleep(nanoseconds: UInt64(options.processingPollInterval * 1_000_000_000))
+        }
+        let final = statuses.last.map { BunnyAPIClient.processing(forStatus: $0) }
+        log("api check: status sequence \(statuses) in \(Int(Date().timeIntervalSince(start))) s, maps to \(final.map { "\($0)" } ?? "nothing"); collection \(collectionId ?? "none") (asked for \(collection?.id ?? "none"))")
+        var ok = true
+        switch final {
+        case .ready:
+            break
+        case .processing:
+            log("api check: still processing after \(Int(options.processingWait)) s; Bunny's queue decides when, not a failure")
+        default:
+            log("FAIL api check: Bunny reported the real video as failed or never answered")
+            ok = false
+        }
+        if collectionId != collection?.id {
+            log("FAIL api check: the video is not in the requested collection")
+            ok = false
+        }
+        return ok
     }
 
     final class RenewCounter: @unchecked Sendable {

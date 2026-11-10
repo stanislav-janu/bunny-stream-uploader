@@ -61,6 +61,12 @@ final class FaultTestTests: XCTestCase {
                 deleted.add(url)
                 return (200, Data(), [:])
             }
+            if url.contains("/collections") {
+                return (200, Data(#"{"items":[{"guid":"c","name":"C"}]}"#.utf8), [:])
+            }
+            if request.httpMethod == "GET" {
+                return (200, Data(#"{"status":4,"collectionId":"c"}"#.utf8), [:])
+            }
             return (200, Data("{\"guid\":\"\(UUID().uuidString)\"}".utf8), [:])
         }
     }
@@ -71,6 +77,8 @@ final class FaultTestTests: XCTestCase {
         options.partCount = 2
         options.retryDelays = [0, 0, 0, 0, 0, 0]
         options.faults = FaultInjectingURLProtocol.Faults(dropBeforeSend: 0.1, dropAfterSend: 0.1, serviceUnavailable: 0.1)
+        options.processingWait = 1
+        options.processingPollInterval = 0.01
         return options
     }
 
@@ -92,8 +100,32 @@ final class FaultTestTests: XCTestCase {
 
         XCTAssertTrue(passed, lines.all.joined(separator: "\n"))
         XCTAssertEqual(deleted.all.count, 2)
+        XCTAssertTrue(lines.all.contains("api check: no --video given, skipping the processing check"))
         XCTAssertEqual(lines.all.last, "PASS")
         XCTAssertTrue(lines.all.contains { $0.hasPrefix("re-upload check: second upload") })
+    }
+
+    func testProcessingCheckWithRealVideo() async {
+        let fake = M2ReliabilityTests.FakeTUS()
+        let deleted = Lines()
+        install(fake, deleted: deleted)
+        let dice = Dice([0.05, 0.9, 0.9, 0.9])
+        FaultInjectingURLProtocol.state.setRandom { dice.next() }
+        let video = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mp4")
+        FileManager.default.createFile(atPath: video.path, contents: Data(repeating: 1, count: 4096))
+        defer { try? FileManager.default.removeItem(at: video) }
+        var options = self.options
+        options.realVideo = video
+        let lines = Lines()
+        let passed = await FaultTest.run(
+            credentials: Credentials(apiKey: "k", libraryId: "1"),
+            options: options,
+            apiSession: MockURLProtocol.makeSession(),
+            log: { lines.add($0) }
+        )
+        XCTAssertTrue(passed, lines.all.joined(separator: "\n"))
+        XCTAssertEqual(deleted.all.count, 3)
+        XCTAssertTrue(lines.all.contains { $0.contains("maps to ready; collection c (asked for c)") }, lines.all.joined(separator: "\n"))
     }
 
     func testFailsWhenNoFaultIsInjected() async {

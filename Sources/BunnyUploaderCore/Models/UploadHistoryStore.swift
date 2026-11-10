@@ -15,6 +15,7 @@ public struct UploadHistoryStore: Sendable {
         public var libraryId: String?
         public var finishedAt: Date?
         public var resume: ResumeState?
+        public var processing: BunnyProcessing?
     }
 
     public let fileURL: URL
@@ -65,7 +66,8 @@ extension UploadItem {
             videoId: videoId,
             libraryId: libraryId,
             finishedAt: finishedAt,
-            resume: resume
+            resume: resume,
+            processing: processing
         )
     }
 
@@ -84,5 +86,6 @@ extension UploadItem {
         libraryId = record.libraryId
         finishedAt = record.finishedAt
         resume = record.resume
+        processing = record.state == .processing ? .processing : record.processing
     }
 }

@@ -95,7 +95,7 @@ Depends: S-003
 Acceptance:
 - [snap] A done row shows the video ID (shortened in the middle) and a "Copy ID" button.
 - [self] After Copy ID the pasteboard holds exactly the GUID.
-- [snap] The row's context menu offers Copy ID and Copy Embed Link (`https://iframe.mediadelivery.net/embed/{libraryId}/{videoId}`).
+- [snap] The row's context menu offers Copy ID and Copy Embed Link (`https://player.mediadelivery.net/embed/{libraryId}/{videoId}`).
 UX:
 - Flow: done row -> Copy ID button, context menu Copy ID or Copy Embed Link, or Command-C on the selected row (S-020) -> the button briefly turns into a checkmark "Copied"
 - Surface: inline button in the row (acts on one thing already on screen), same actions in the context menu
@@ -216,19 +216,34 @@ As the user, I see when Bunny has finished transcoding, not only when the upload
 Screens: main-finished
 Depends: S-003
 Acceptance:
-- [unit] After upload the row shows "Processing" and polls Get Video every 10 s until status is finished, failed, or 2 hours pass.
-- [snap] A finished row shows "Ready to play"; a Bunny transcoding failure shows "Bunny could not process the video".
+- [unit] When the upload ends the row is Done at once (Copy ID works) and shows "Bunny processing" beside it; it polls Get Video every 10 s until status 4 (Ready to play), 5 or 6 (failed), or 2 hours after the upload ended.
+- [snap] A processed row shows "Ready to play"; a Bunny failure shows "Bunny could not process the video".
 - [unit] The notification and Dock badge fire when the upload ends, not when processing ends.
-Status: todo
+- [unit] Rows still processing at quit are checked again after launch; Remove and Clear Finished stop the checks.
+- [self] `--fault-test --video <file>` uploads a real short video and follows its status against the real library.
+UX:
+- Flow: upload ends -> Done plus "Bunny processing" (hourglass) -> "Ready to play" (play icon) or the failure text (warning icon, red); after 2 hours without an answer the extra label disappears
+- Surface: inline in the row's status line (information that needs no action)
+- Words: "Bunny processing", tooltip "Bunny is transcoding the video. The video ID already works."; "Ready to play"; "Bunny could not process the video"
+- Access: each state has its own icon, not only color
+Note: status values from Bunny's Get Video reference: 0 Created, 1 Uploaded, 2 Processing, 3 Transcoding, 4 Finished, 5 Error, 6 UploadFailed, 7 JitSegmenting, 8 JitPlaylistsCreated.
+Status: done
 
-### S-016 Open the video in the Bunny dashboard
-As the user, I choose "Open in Bunny" on a finished row and the video's page opens in my browser.
+
+### S-016 Play the video in the browser
+As the user, I choose "Play in Browser" on a finished row and Bunny's play page opens in my browser.
 Screens: main-row-menu
 Depends: S-006
 Acceptance:
-- [unit] The URL is built from library ID and video ID.
-- [snap] The row's context menu has "Open in Bunny".
-Status: todo
+- [unit] The URL is `https://player.mediadelivery.net/play/{libraryId}/{videoId}`, built from the row's own library and video ID.
+- [snap] The row's context menu has "Play in Browser".
+UX:
+- Flow: right-click a done row -> Play in Browser -> default browser opens the play page
+- Surface: context menu item (a secondary action on one row)
+- Words: "Play in Browser"
+Note: Bunny documents the play and embed pages on player.mediadelivery.net; it documents no per-video dashboard URL, so the story opens the play page.
+Status: done
+
 
 ### S-017 Upload into a collection
 As the user, I pick a collection in Settings and new uploads land in it.
@@ -236,11 +251,17 @@ Screens: settings
 Depends: S-002
 Acceptance:
 - [unit] Settings loads the library's collections; Create Video sends the chosen `collectionId`.
-- [snap] Settings shows a collection picker with "None" as the first choice.
-- [unit] A collection that no longer exists falls back to "None" with a note in Settings.
-Status: todo
+- [snap] Settings shows a collection picker with "No collection" as the first choice.
+- [unit] A collection that no longer exists falls back to "No collection" with a note in Settings; a renamed one keeps its selection.
+- [unit] The choice is kept per library and survives a restart.
+- [self] `--fault-test --video <file>` creates a video in the library's first collection and checks it landed there.
+UX:
+- Flow: Settings -> Collection -> picker "New uploads go to" -> choice applies at once (no Save); loads on open and after saving credentials
+- Surface: inline picker in Settings (changes one value)
+- States: loading (spinner, picker disabled); failed: "Unable to load collections." with "Try Again"; gone: "The saved collection no longer exists. New uploads go to the library without a collection."
+- Words: "Collection", "New uploads go to", "No collection", "Try Again"
+Status: done
 
-## M4 Speed: many files, keyboard, menus
 
 ### S-018 Choose videos with File > Open
 As the user, I press Command-O, pick one or more videos, and they upload.

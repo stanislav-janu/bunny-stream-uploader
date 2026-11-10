@@ -290,6 +290,51 @@ final class M2ReliabilityTests: XCTestCase {
         XCTAssertEqual(withParts.partURLs[0]?.absoluteString, "https://video.bunnycdn.com/tusupload/a")
     }
 
+    func testUntrustedPartURLsAreDropped() {
+        var state = ResumeState(partCount: 8, fileSize: 100, fileModified: nil)
+        state.parts = [
+            0: "https://video.bunnycdn.com/tusupload/ok",
+            1: "https://evil.example.com/tusupload/x",
+            2: "http://video.bunnycdn.com/tusupload/x",
+            3: "https://video.bunnycdn.com.evil.example/tusupload/x",
+            4: "https://user:pass@video.bunnycdn.com/tusupload/x",
+            5: "https://video.bunnycdn.com:8443/tusupload/x",
+            6: "https://video.bunnycdn.com/library/1/videos",
+            7: "https://video.bunnycdn.com/tusupload/../library",
+            9: "https://video.bunnycdn.com/tusupload/out-of-range",
+        ]
+        XCTAssertEqual(Array(state.partURLs.keys), [0])
+        XCTAssertTrue(state.isValid)
+        XCTAssertFalse(ResumeState(partCount: 0, fileSize: 100, fileModified: nil).isValid)
+        XCTAssertFalse(ResumeState(partCount: 65, fileSize: 100, fileModified: nil).isValid)
+        XCTAssertFalse(ResumeState(partCount: 8, fileSize: 0, fileModified: nil).isValid)
+    }
+
+    @MainActor
+    func testInvalidSavedSplitStartsOver() async throws {
+        let fake = FakeTUS()
+        let size = 60 * 1024 * 1024
+        let file = makeFile(size: size)
+        defer { try? FileManager.default.removeItem(at: file) }
+        let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        let history = UploadHistoryStore(fileURL: FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathComponent("uploads.json"))
+        history.save([UploadHistoryStore.Record(
+            id: UUID(), filePath: file.path, fileName: "a.mp4", fileSize: Int64(size), mimeType: "video/mp4",
+            state: .interrupted, bytesUploaded: 0, videoId: "old-video", libraryId: "1", finishedAt: nil,
+            resume: ResumeState(partCount: 100_000, fileSize: Int64(size), fileModified: modified,
+                                parts: [0: "https://evil.example.com/tusupload/x"])
+        )])
+        let engine = makeEngine(fake, history: history)
+        let item = engine.items[0]
+        engine.retry(item)
+        await waitTerminal(item)
+        XCTAssertEqual(item.state, .done)
+        XCTAssertEqual(fake.stats.heads, 0)
+        XCTAssertEqual(fake.stats.created, engine.threadCount(for: Int64(size)))
+    }
+
     func testUploaderResumesSavedParts() async throws {
         let fake = FakeTUS()
         let half = "https://video.bunnycdn.com/tusupload/saved-half"

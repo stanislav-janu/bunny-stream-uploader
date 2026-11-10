@@ -67,6 +67,21 @@ public enum UploadState: Equatable, Codable, Sendable {
     }
 }
 
+/// Bunny's work on an uploaded video.
+public enum BunnyProcessing: String, Codable, Sendable {
+    case processing
+    case ready
+    case failed
+
+    public var label: String {
+        switch self {
+        case .processing: return String(localized: "Bunny processing")
+        case .ready: return String(localized: "Ready to play")
+        case .failed: return String(localized: "Bunny could not process the video")
+        }
+    }
+}
+
 /// What a parallel upload needs to continue after a quit, crash, or failure:
 /// the split it used and the part URLs Bunny gave out so far.
 public struct ResumeState: Codable, Equatable, Sendable {
@@ -92,8 +107,31 @@ public struct ResumeState: Codable, Equatable, Sendable {
         return abs(saved.timeIntervalSince(current)) < 1
     }
 
+    /// Saved part URLs that point at Bunny's TUS endpoint. Anything else (a tampered
+    /// `uploads.json`) is dropped, so auth headers never go to another host; that part
+    /// starts over.
     public var partURLs: [Int: URL] {
-        return parts.compactMapValues { URL(string: $0) }
+        return parts.filter { $0.key >= 0 && $0.key < partCount }.compactMapValues { Self.trustedPartURL($0) }
+    }
+
+    /// Whether the saved split is usable (1...64 parts, as the engine produces).
+    public var isValid: Bool {
+        return (1...64).contains(partCount) && fileSize > 0
+    }
+
+    static func trustedPartURL(_ string: String) -> URL? {
+        guard let components = URLComponents(string: string),
+              components.scheme == "https",
+              components.host == "video.bunnycdn.com",
+              components.port == nil,
+              components.user == nil,
+              components.password == nil,
+              components.path.hasPrefix("/tusupload/"),
+              !components.path.contains("..")
+        else {
+            return nil
+        }
+        return components.url
     }
 }
 
@@ -116,6 +154,8 @@ public final class UploadItem: ObservableObject, Identifiable {
     @Published public var finishedAt: Date?
     /// Saved parts of an unfinished parallel upload, used by Retry to continue.
     public var resume: ResumeState?
+    /// Bunny's processing of the uploaded video (after Done); nil when unknown.
+    @Published public var processing: BunnyProcessing?
 
     public init(
         id: UUID = UUID(),
@@ -140,6 +180,12 @@ public final class UploadItem: ObservableObject, Identifiable {
     public var embedLink: String? {
         guard let videoId, let libraryId else { return nil }
         return BunnyAPIClient.embedLink(libraryId: libraryId, videoId: videoId)
+    }
+
+    /// Bunny's play page, once the video exists.
+    public var playLink: URL? {
+        guard let videoId, let libraryId else { return nil }
+        return URL(string: BunnyAPIClient.playLink(libraryId: libraryId, videoId: videoId))
     }
 
     /// Modification date of the source file, or nil when it cannot be read.

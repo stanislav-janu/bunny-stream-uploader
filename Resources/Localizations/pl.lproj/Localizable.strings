@@ -74,3 +74,15 @@
 "Uploads still running: %lld. If you quit now, they stop and you can retry them after the next launch." = "Trwające przesyłania: %lld. Jeśli teraz zakończysz, zostaną zatrzymane i po następnym uruchomieniu możesz je ponowić.";
 "Keep Uploading" = "Kontynuuj przesyłanie";
 "Quit" = "Zakończ";
+
+/* After upload: processing, play page, collections */
+"Ready to play" = "Gotowe do odtwarzania";
+"Bunny could not process the video" = "Bunny nie mógł przetworzyć filmu";
+"Bunny is transcoding the video. The video ID already works." = "Bunny konwertuje film. ID filmu już działa.";
+"Play in Browser" = "Odtwórz w przeglądarce";
+"Collection" = "Kolekcja";
+"New uploads go to" = "Nowe przesyłania trafiają do";
+"No collection" = "Bez kolekcji";
+"Unable to load collections." = "Nie można wczytać kolekcji.";
+"Try Again" = "Spróbuj ponownie";
+"The saved collection no longer exists. New uploads go to the library without a collection." = "Zapisana kolekcja już nie istnieje. Nowe przesyłania trafią do biblioteki bez kolekcji.";

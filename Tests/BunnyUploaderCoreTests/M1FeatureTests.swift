@@ -120,13 +120,13 @@ final class M1FeatureTests: XCTestCase {
     func testEmbedLink() {
         XCTAssertEqual(
             BunnyAPIClient.embedLink(libraryId: "42", videoId: "abc"),
-            "https://iframe.mediadelivery.net/embed/42/abc"
+            "https://player.mediadelivery.net/embed/42/abc"
         )
         let item = UploadItem(fileURL: URL(fileURLWithPath: "/tmp/a.mp4"), fileName: "a.mp4", fileSize: 1, mimeType: "video/mp4")
         XCTAssertNil(item.embedLink)
         item.videoId = "abc"
         item.libraryId = "42"
-        XCTAssertEqual(item.embedLink, "https://iframe.mediadelivery.net/embed/42/abc")
+        XCTAssertEqual(item.embedLink, "https://player.mediadelivery.net/embed/42/abc")
     }
 
     // MARK: - S-007 Retry
